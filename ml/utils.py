@@ -10,14 +10,16 @@ def auto_pick_target(df: pd.DataFrame) -> str | None:
 
 def recommendations_text(target: str, problem: str, top_features: list[str]) -> str:
     tips = []
-    if problem=="regression":
+    if problem == "regression":
         tips.append("Zmniejsz rozrzut danych (np. transformacje, outliers) — poprawi RMSE/MAE.")
-        tips.append("Dodaj cechy kalendarzowe (rok/miesiąc/dzień tygodnia), jeśli masz datę — model lepiej uchwyci sezonowość.")
+        tips.append("Dodaj cechy kalendarzowe (rok/miesiąc/dzień/tydzień), jeśli masz datę — model lepiej uchwyci sezonowość.")
         tips.append("Sprawdź segmenty kategorii z najwyższym błędem — tam jest najwięcej do ugrania.")
     else:
         tips.append("Zbalansuj klasy (class_weight/oversampling), jeśli są nierówne — F1/ROC-AUC wzrośnie.")
         tips.append("Dopasuj próg decyzyjny pod cel biznesowy (minimalizuj FP lub FN).")
         tips.append("Zbadaj cechy o najwyższej ważności: czy są stabilne i sensowne biznesowo?")
+    header = ""
     if top_features:
-        tips.insert(0, f"Najważniejsze cechy dla `{target}`: {', '.join(top_features[:5])}. Skup się na ich jakości i stabilności.")
-    return "\n- " + "\n- ".join(tips)
+        header = f"Najważniejsze cechy dla `{target}`: {', '.join(top_features[:5])}. Skup się na ich jakości i stabilności.\n"
+    return (header + "- " + "\n- ".join(tips)).strip()
+

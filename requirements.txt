@@ -9,6 +9,6 @@ plotly
 matplotlib
 joblib>=1.4
 shap>=0.45
-pycaret>=3.3; 
-python_version < "3.12"
+pyarrow>=16.0
+pycaret>=3.3 ; python_version < "3.12"
 rich>=13.7

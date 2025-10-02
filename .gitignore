@@ -1,24 +1,18 @@
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.egg-info/
-.venv/
-.env
-.env.*
+
+# Streamlit/artefakty
+tmiv_out/
+*.sqlite*
+*.db
+logs.log
+
+# System/IDE
 .DS_Store
 
-# Streamlit
-.streamlit/
+# Secrets
+.env
 
-# Outputs
-tmiv_out/
-models/
-artifacts/
-*.joblib
-*.pkl
-
-# VSCode / notebooks
-.vscode/
-.ipynb_checkpoints/
+# Git/Conda temp
+mambaf*

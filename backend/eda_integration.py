@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict
 import json
 import pandas as pd
+import numpy as np
 import streamlit as st
 
 def _heuristic_describe_columns(df: pd.DataFrame) -> Dict[str, str]:
@@ -33,9 +34,9 @@ def get_column_descriptions(df: pd.DataFrame, api_key: str | None) -> Dict[str, 
                 "bez żadnego tekstu poza JSON. Kolumny: " + ", ".join(cols)
             )
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role":"user","content": prompt}],
-                temperature=0.2, max_tokens=500
+                model=settings.openai_model,  # z configu
+                response_format={"type": "json_object"},
+                messages=[...]
             )
             txt = resp.choices[0].message.content.strip()
             mapping = json.loads(txt)
@@ -83,9 +84,6 @@ def eda_quality_report(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["missing_pct", "nunique"], ascending=[False, True])
 
 # === AUTOMATYCZNE PRZYGOTOWANIE DANYCH ===
-import pandas as _pd
-import numpy as _np
-
 def _is_date_like(s: _pd.Series) -> bool:
     if _pd.api.types.is_datetime64_any_dtype(s): return True
     if s.dtype==object:

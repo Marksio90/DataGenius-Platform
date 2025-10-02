@@ -1,8 +1,0 @@
-streamlit>=1.36
-pydantic-settings>=2.2
-python-dotenv>=1.0
-openai>=1.43
-joblib>=1.4
-shap>=0.45
-pycaret>=3.3 ; python_version < "3.12"
-rich>=13.7

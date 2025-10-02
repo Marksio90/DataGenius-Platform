@@ -1,5 +1,3 @@
-https://tmiv---the-most-important-variable.streamlit.app/
-
 # 📊 TMIV – The Most Important Variables
 
 **TMIV** (The Most Important Variables) to uniwersalna aplikacja w **Streamlit**,  

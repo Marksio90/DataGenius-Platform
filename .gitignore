@@ -12,6 +12,7 @@ logs.log
 .DS_Store
 
 # Secrets
+.streamlit/secrets.toml
 .env
 
 # Git/Conda temp

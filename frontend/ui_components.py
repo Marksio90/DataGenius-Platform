@@ -1,546 +1,112 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+from typing import Any, Dict, Tuple, Optional, List
+import os, json, zipfile
+from io import BytesIO
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from typing import Dict, List, Any, Optional
-from datetime import datetime
-import json
-import pickle
-import time
-from backend.safe_utils import truthy_df_safe
 
-def rerun_once(key='_rerun_once'):
-    import streamlit as st
-    if not st.session_state.get(key, False):
-        st.session_state[key] = True
-        st.rerun()
+__all__ = [
+    "UIComponents",
+    "render_sidebar_clean",
+    "render_ai_recommendations",
+    "render_training_controls",
+    "render_advanced_overrides",
+    "render_ai_config_simple",
+    "resolve_problem_type",
+    "_render_session_info",
+    "_render_export_section",
+    "ensure_default_navigation",
+    "inject_soft_theme",
+]
 
-
-PLAN_HELP = {
-    "Train size": "Jaki procent danych trafia do zbioru treningowego. Więcej dla treningu = mniej dla walidacji/testu.",
-    "Strategia treningu": "Zestaw predefiniowanych wyborów modeli i ustawień dla małych/średnich/dużych zbiorów.",
-    "Optymalizacje": "Dodatkowe techniki jak stacking/blending, które mogą poprawić wyniki kosztem czasu.",
-    "CV folds": "Liczba foldów w walidacji krzyżowej. Więcej = stabilniejsza ocena, ale wolniej.",
-    "Metryka optymalizacji": "Kryterium wyboru najlepszego modelu. Np. F1 (ważona) dla niezbalansowanych klas.",
-    "Wagi klas": "Włącza wagi klas, żeby karać bardziej błędy wobec mniejszości klasy.",
-    "Próbkowanie": "Metody równoważenia danych (undersampling/oversampling).",
-    "Udział mniejszości (jeśli próbkowanie)": "Docelowy udział klasy mniejszościowej po próbkowaniu.",
-    "Optymalizacja progu": "Dostraja próg decyzji (np. >0.5) pod wybraną metrykę.",
-    "Typ CV": "Rodzaj walidacji (np. StratifiedKFold dla klasyfikacji).",
-    "Random state": "Ziarno losowości dla replikowalności wyników.",
-    "Imputacja num.": "Jak uzupełniać braki w kolumnach liczbowych (np. średnią).",
-    "Imputacja kat.": "Jak uzupełniać braki w kolumnach kategorycznych (np. najczęstsza).",
-    "Skalowanie": "Standaryzacja cech liczbowych. Często pomaga modelom liniowym.",
-    "Kodowanie kat.": "Sposób zamiany kategorii na liczby (np. One-Hot).",
-    "Outliery": "Obsługa obserwacji odstających (wykrywanie/ograniczanie wpływu).",
-    "Min. wariancja (selekcja)": "Filtr usuwa cechy o bardzo niskiej zmienności.",
-    "Selekcja cech": "Włącza selekcję cech (np. top-K wg ważności).",
-    "Top-K (jeśli selekcja)": "Ile najlepszych cech zostawić przy włączonej selekcji.",
-    "Rodziny modeli": "Grupy modeli do rozważenia (drzewa, GBM, XGBoost, LightGBM itp.).",
-    "Równoległość (n_jobs)": "Ile rdzeni CPU użyć. -1 = wszystkie dostępne.",
-    "Limit czasu treningu [s] / model": "Twardy limit czasu na pojedynczy model.",
-    "HPO: liczba prób (n_trials)": "Liczba prób w strojenia hiperparametrów (im więcej tym lepiej, ale wolniej).",
-}
-
-# ✅ DODANE: Bezpieczne zarządzanie kluczami API
-from cryptography.fernet import Fernet
-
-# ✅ DODANE: opcjonalny systemowy keyring (produkcyjny storage)
-try:
-    import keyring as system_keyring  # type: ignore
-except Exception:  # pragma: no cover
-    system_keyring = None  # type: ignore
-
-
-# --- Anti-dup helpers ---
-if "_once_flags" not in st.session_state:
-    st.session_state["_once_flags"] = set()
-
-
-def _once_per_run(flag: str) -> bool:
-    """Zwraca True tylko przy pierwszym wywołaniu w danym rerunie."""
-    if flag in st.session_state["_once_flags"]:
-        return False
-    st.session_state["_once_flags"].add(flag)
-    return True
-
-
-def _fmt_float_safe(x, digits=2):
-    try:
-        return f"{float(x):.{digits}f}"
-    except Exception:
-        return str(x)
-
-
-def _to_serializable(obj: Any) -> Any:
-    """
-    Odporna konwersja obiektów (np. numpy/pandas) na typy JSON-owalne.
-    """
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
-    if isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    if isinstance(obj, (pd.Timestamp,)):
-        return obj.isoformat()
-    if isinstance(obj, pd.DataFrame):
-        return obj.to_dict(orient="records")
-    if isinstance(obj, pd.Series):
-        return obj.tolist()
-    if isinstance(obj, dict):
-        return {str(k): _to_serializable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set)):
-        return [_to_serializable(x) for x in obj]
-    try:
-        json.dumps(obj)
-        return obj
-    except Exception:
-        return str(obj)
-
-
-# ✅ Cache funkcja poza klasą (czytelniej i stabilniej z dekoratorem)
-@st.cache_data(ttl=60, show_spinner=False)
-def _get_dataset_metrics_cached(_df: pd.DataFrame) -> dict:
-    """Oblicz metryki datasetu (cached dla performance)"""
-    try:
-        numeric_cols = len(_df.select_dtypes(include=[np.number]).columns)
-        memory_mb = float(_df.memory_usage(deep=True).sum() / (1024**2))
-        missing_total = _df.isnull().sum().sum()
-        total_cells = _df.shape[0] * _df.shape[1]
-        completeness = 100 - float((missing_total / max(total_cells, 1)) * 100)
-
-        return {
-            'rows': int(len(_df)),
-            'cols': int(len(_df.columns)),
-            'numeric_cols': numeric_cols,
-            'total_cols': int(len(_df.columns)),
-            'memory_mb': memory_mb,
-            'completeness': completeness
-        }
-    except Exception:
-        return {
-            'rows': 0, 'cols': 0, 'numeric_cols': 0,
-            'total_cols': 0, 'memory_mb': 0.0, 'completeness': 0.0
-        }
-
-
-
-try:
-    from backend.security_manager import credential_manager  # type: ignore
-except ImportError:
-    # Fallback jeśli security_manager nie jest dostępny
-    credential_manager = None
-
-
-class UIComponents:
-    """
-    Klasa zawierająca wszystkie komponenty interfejsu użytkownika
-    """
-
-    def __init__(self):
-        pass
-    # --- Compatibility wrapper for older callers ---
-    def render_ai_config(self):
-        """Public alias kept for backward compatibility (calls _render_ai_config_simple)."""
-        try:
-            return self._render_ai_config_simple()
-        except AttributeError:
-            # if somehow missing, create a minimal inline renderer
-            import streamlit as st
-            st.warning("⚠️ Brak modułu konfiguracji AI. Zaktualizuj UIComponents.")
-            return None
-
-    def render_header(self):
-        """Renderuje nagłówek aplikacji"""
-
-        # Custom CSS (ulepszone style + poprawka dla wykresów)
-        st.markdown("""
+def inject_soft_theme():
+    """Subtelne kolory, łagodne promienie, lepsza typografia."""
+    st.markdown(
+        """
         <style>
-        .main-header {
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            padding: 2rem;
-            border-radius: 10px;
-            margin-bottom: 2rem;
-            text-align: center;
-            color: white;
+        :root {
+            --soft-bg: #17181c;
+            --soft-card: #20222a;
+            --soft-accent: #7aa2f7; /* niebieski pastel */
+            --soft-accent-2: #9ece6a; /* zieleń pastel */
+            --soft-accent-3: #f7768e; /* róż/coral */
+            --soft-text: #e8eaed;
+            --soft-muted: #aab2bf;
+            --soft-border: #2a2d36;
+            --radius: 14px;
         }
-        .header-title {
-            font-size: 3rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
+        .stApp { background-color: var(--soft-bg); }
+        .block-container { padding-top: 2rem; }
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #1b1d23 0%, #181a20 100%);
+            border-right: 1px solid var(--soft-border);
         }
-        .header-subtitle {
-            font-size: 1.2rem;
-            opacity: 0.9;
+        /* Panele/containter */
+        .stExpander, .stCheckbox, .stRadio, .stDownloadButton, .stButton, .stTextInput, .stNumberInput, .stSelectbox {
+            border-radius: var(--radius) !important;
         }
-        .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white !important;
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            text-align: center;
-            margin: 0.5rem 0;
+        /* Przyciski */
+        button[kind="primary"] {
+            background: var(--soft-accent) !important;
+            color: #0c0f14 !important;
+            border-radius: var(--radius) !important;
+            border: 0 !important;
         }
-        .metric-card h3 {
-            color: white !important;
-            font-size: 2rem;
-            margin: 0;
-            font-weight: bold;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        .stButton>button {
+            border-radius: var(--radius) !important;
         }
-        .metric-card p {
-            color: white !important;
-            margin: 0.5rem 0 0 0;
-            opacity: 0.9;
-            font-size: 0.9rem;
-            text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+        /* Inputy */
+        .stTextInput>div>div>input, .stPassword>div>div>input {
+            border-radius: 10px !important;
         }
-        .feature-card {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 1rem;
-            margin: 0.5rem 0;
+        /* Tagi/statusy */
+        .tmiv-badge { 
+            display: inline-block; padding: 2px 8px; border-radius: 999px; 
+            font-size: 12px; line-height: 18px; border: 1px solid var(--soft-border); color: var(--soft-muted);
         }
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 1rem;
-            border-radius: 8px;
-            border-left: 4px solid #28a745;
-        }
-        .warning-message {
-            background: #fff3cd;
-            color: #856404;
-            padding: 1rem;
-            border-radius: 8px;
-            border-left: 4px solid #ffc107;
-        }
-
-        /* NOWE - Poprawki dla wykresów Plotly */
-        .stPlotlyChart {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin: 10px 0;
-            padding: 10px;
-        }
-
-        /* Zapobiega nakładaniu się wykresów */
-        .element-container {
-            margin-bottom: 20px;
-        }
-
-        /* Responsive dla wykresów */
-        @media (max-width: 768px) {
-            .stPlotlyChart {
-                margin: 5px 0;
-                padding: 5px;
-            }
-        }
-
-        /* Poprawka dla sidebar */
-        section[data-testid="stSidebar"] { padding-top: 1rem; }
-
-        /* Lepsze spacing między sekcjami */
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-
-        /* Poprawki dla expanderów */
-        .streamlit-expanderHeader {
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-
-        .streamlit-expanderContent {
-            padding: 15px;
-            border: 1px solid #e0e0e0;
-            border-radius: 5px;
-            background: #fafafa;
-        }
+        .tmiv-badge.ok { background: rgba(158,206,106,0.15); color: #b9f399; border-color: rgba(158,206,106,0.4); }
+        .tmiv-badge.warn { background: rgba(247,118,142,0.12); color: #fcb0be; border-color: rgba(247,118,142,0.4); }
+        .tmiv-note { font-size: 12px; color: var(--soft-muted); }
+        /* Sekcja tytułowa sidebara */
+        .tmiv-version { color: var(--soft-muted); font-size: 12px; margin-bottom: 8px; }
         </style>
-        """, unsafe_allow_html=True)
+        """
+    , unsafe_allow_html=True)
 
-        # Header główny
-        st.markdown("""
-        <div class="main-header">
-            <div class="header-title">🎯 The Most Important Variables</div>
-            <div class="header-subtitle">
-                🚀 Zaawansowana platforma AI/ML do inteligentnej analizy najważniejszych cech w danych
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+# Ensure a sensible default page early to avoid "Nieznana strona: None"
+def ensure_default_navigation():
+    if "nav_page" not in st.session_state and "page" not in st.session_state:
+        st.session_state["nav_page"] = "📊 Analiza Danych"
+        st.session_state["page"] = "📊 Analiza Danych"
+        st.session_state["page_slug"] = "analysis"
+        st.session_state["page_label"] = "📊 Analiza Danych"
 
-        # Container dla metryk
-        metrics_container = st.container()
-        with metrics_container:
-            if _once_per_run("header_metrics"):
-                self._render_dataset_metrics()
-
-    def _render_dataset_metrics(self):
-        """Renderuje ulepszone metryki datasetu (z cache)"""
-        if "df" in st.session_state and st.session_state.get('data_loaded', False):
-            df = st.session_state["df"]
-
-            # ✅ Użyj cached metrics zamiast obliczać za każdym razem
-            metrics = _get_dataset_metrics_cached(df)
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                rows_formatted = f"{metrics['rows']:,}"
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3>📊 {rows_formatted}</h3>
-                    <p>Wierszy danych</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col2:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3>🔢 {metrics['numeric_cols']}/{metrics['total_cols']}</h3>
-                    <p>Kolumn numerycznych</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col3:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3>✨ {_fmt_float_safe(metrics['completeness'], 1)}%</h3>
-                    <p>Kompletność danych</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col4:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h3>💾 {_fmt_float_safe(metrics['memory_mb'], 1)}MB</h3>
-                    <p>Rozmiar w pamięci</p>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            # Puste metryki gdy brak danych
-            col1, col2, col3, col4 = st.columns(4)
-
-            metrics = [
-                ("📊", "Wierszy danych"),
-                ("🔢", "Kolumn numerycznych"),
-                ("✨", "Kompletność danych"),
-                ("💾", "Rozmiar w pamięci")
-            ]
-
-            for col, (icon, label) in zip([col1, col2, col3, col4], metrics):
-                with col:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h3>{icon} --</h3>
-                        <p>{label}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-    def render_sidebar(self) -> str:
-        """Renderuje sidebar z nawigacją"""
-
-        with st.sidebar:
-            # ✅ Bezpieczna konfiguracja AI (keyring + Fernet fallback)
-            self._render_ai_config_simple()
-
-            # Status aplikacji
-            self._render_status_indicator()
-
-            st.divider()
-
-            # Menu nawigacyjne
-            pages = [
-                "📊 Analiza Danych",
-                "🤖 Trening Modelu",
-                "📈 Wyniki i Wizualizacje",
-                "💡 Rekomendacje",
-                "📚 Dokumentacja"
-            ]
-
-            selected_page = st.radio(
-                "Wybierz sekcję:",
-                pages,
-                index=0
-            )
-
-            st.divider()
-
-            # Informacje o sesji
-            self._render_session_info()
-
-            # Szybkie akcje
-            st.markdown("### ⚡ Szybkie akcje")
-
-            if st.button("🔄 Resetuj sesję", key="btn_reset_session", use_container_width=True, help="Wyczyść wszystkie dane i rozpocznij od nowa"):
-                self._reset_session()
-
-            # NAPRAWIONY EKSPORT
-            self._render_export_section()
-
-            # Footer sidebar - ZAKTUALIZOWANY BRANDING
-            st.markdown("---")
-            st.markdown("**🛠️ Wersja:** 2.1.0")
-            st.markdown("**🚀 Made by Marksio AI Solutions**")
-            st.markdown("**⭐ Advanced ML Platform**")
-
-        return selected_page
-
-    def render_ai_config(self):
-        """Public alias for backward compatibility."""
-        return self._render_ai_config_simple()
-
-    def _render_ai_config_simple(self):
-        """BEZPIECZNA konfiguracja kluczy AI z keyring + szyfrowany fallback."""
-        import os, streamlit as st
-        try:
-            import keyring as system_keyring  # type: ignore
-        except Exception:
-            system_keyring = None  # type: ignore
-    
-        secure_mgr = SecureKeyManager()
-        st.markdown("### 🤖 Konfiguracja AI")
-    
-        def _has_key(provider: str) -> bool:
-            try:
-                if secure_mgr.get_key(provider):
-                    return True
-            except Exception:
-                pass
-            if system_keyring is not None:
-                try:
-                    if system_keyring.get_password("TMIV", provider):
-                        return True
-                except Exception:
-                    pass
-            if os.getenv(f"{provider}".upper() + "_API_KEY"):
-                return True
-            return bool(st.session_state.get(f"{provider}_api_key"))
-    
-        def _store_key(provider: str, api_key: str) -> bool:
-            api_key = str(api_key or '').strip()
-            if provider == 'openai' and not api_key.startswith('sk-'):
-                st.error("❌ OpenAI klucz musi zaczynać się od 'sk-'")
-                return False
-            if provider == 'anthropic' and not api_key.startswith('sk-ant-'):
-                st.error("❌ Anthropic klucz musi zaczynać się od 'sk-ant-'")
-                return False
-            try:
-                if system_keyring is not None:
-                    system_keyring.set_password("TMIV", provider, api_key)
-                    st.success("🔒 Zapisano w systemowym keyringu")
-                    return True
-            except Exception:
-                st.warning("⚠️ Nie udało się zapisać w keyringu – użyję szyfrowanej sesji")
-            if secure_mgr.set_key(provider, api_key):
-                st.warning("⚠️ Zapisano w sesji (szyfrowane). Rozważ użycie systemowego keyringu.")
-                return True
-            return False
-    
-        def _delete_key(provider: str) -> bool:
-            ok = True
-            try:
-                if system_keyring is not None:
-                    try:
-                        system_keyring.delete_password("TMIV", provider)
-                    except Exception:
-                        pass
-            except Exception:
-                ok = False
-            ok = secure_mgr.delete_key(provider) and ok
-            return ok
-    
-        with st.expander("🔑 Klucze API", expanded=False):
-            for provider, label in [("openai","OpenAI"), ("anthropic","Anthropic")]:
-                c1, c2, c3 = st.columns([3,1,1])
-                with c1:
-                    placeholder = "sk-..." if provider=="openai" else "sk-ant-..."
-                    api_key = st.text_input(f"{label} API Key", type="password", placeholder=placeholder, key=f"{provider}_input")
-                with c2:
-                    if st.button("Zapisz", key=f"{provider}_save"):
-                        if _store_key(provider, api_key):
-                            st.success(f"✅ {label} – zapisano")
-                        else:
-                            st.error(f"❌ {label} – nie zapisano")
-                with c3:
-                    if st.button("Usuń", key=f"{provider}_del"):
-                        if _delete_key(provider):
-                            st.success(f"🗑️ {label} – usunięto")
-                        else:
-                            st.error(f"❌ {label} – nie usunięto")
-                st.caption(f"Status: {'🟢' if _has_key(provider) else '🔴'}")
-    
-        st.info("🔒 Preferowany storage: systemowy keyring. Fallback: szyfrowana sesja (Fernet).")
-
-    def _render_status_indicator(self):
-        """Renderuje wskaźnik statusu aplikacji"""
-        st.markdown("### 📊 Status aplikacji")
-
-        # Status wczytania danych
-        if st.session_state.get('data_loaded', False):
-            st.success("✅ Dane wczytane")
-        else:
-            st.error("❌ Brak danych")
-
-        # Status treningu modelu
-        if st.session_state.get('model_trained', False):
-            st.success("✅ Model wytrenowany")
-        else:
-            st.warning("⏳ Model nie wytrenowany")
-
-        # Status analizy
-        if st.session_state.get('analysis_complete', False):
-            st.success("✅ Analiza zakończona")
-        else:
-            st.info("🔄 Analiza w toku")
-
-    def _render_export_section(self):
-        """Shim: brak właściwej implementacji (_render_export_section). Zapobiega awarii UI."""
-        import streamlit as st
-        st.info('⚙️ _render_export_section – placeholder. Zaktualizuj moduł UI, aby włączyć pełną funkcję.')
-
-    def _render_session_info(self):
-        """Shim: brak właściwej implementacji (_render_session_info). Zapobiega awarii UI."""
-        import streamlit as st
-        st.info('⚙️ _render_session_info – placeholder. Zaktualizuj moduł UI, aby włączyć pełną funkcję.')
+# === SecureKeyManager =====================================================
+try:
+    from cryptography.fernet import Fernet
+except Exception:
+    Fernet = None  # type: ignore
 
 class SecureKeyManager:
-    """
-    Minimalny menedżer bezpiecznych kluczy używany przez UI:
-    - przechowuje klucze zaszyfrowane w st.session_state (Fernet),
-    - nie koliduje z systemowym keyringiem (który obsługujemy osobno).
-    """
     def __init__(self):
         try:
-            import streamlit as st
-            from cryptography.fernet import Fernet
-            # Klucz szyfrujący sesji
             if 'fernet_key' not in st.session_state:
-                st.session_state['fernet_key'] = Fernet.generate_key()
-            self._fernet = Fernet(st.session_state['fernet_key'])
-            # Namespace w sesji
+                st.session_state['fernet_key'] = Fernet.generate_key() if Fernet else None
+            self._fernet = Fernet(st.session_state['fernet_key']) if Fernet and st.session_state.get('fernet_key') else None
             st.session_state.setdefault('secure_storage', {})
             self._store = st.session_state['secure_storage']
         except Exception:
-            # Skrajny fallback: brak szyfrowania (niezalecane, ale lepsze niż crash)
             self._fernet = None
             self._store = {}
 
-    def get_key(self, name: str):
+    def get_key(self, name: str) -> Optional[str]:
         try:
             token = self._store.get(name)
             if not token:
                 return None
             if self._fernet is None:
-                return token
+                return token if isinstance(token, str) else token.decode('utf-8', errors='ignore')
             return self._fernet.decrypt(token).decode('utf-8')
         except Exception:
             return None
@@ -566,811 +132,491 @@ class SecureKeyManager:
         except Exception:
             return False
 
-    def _render_ai_config_simple(self):
-        """BEZPIECZNA konfiguracja AI - KOMPLETNA IMPLEMENTACJA"""
+# === Problem type resolver ===============================================
+def resolve_problem_type(df: pd.DataFrame, target: str) -> str:
+    app_ref = st.session_state.get("app")
+    trainer = None
+    if app_ref is not None:
+        trainer = getattr(app_ref, "ml_trainer", None) or getattr(app_ref, "trainer", None)
+    if trainer is None:
+        try:
+            from backend.ml_integration import MLModelTrainer
+            trainer = MLModelTrainer()
+        except Exception:
+            trainer = None
+    pt = st.session_state.get("problem_type")
+    if not pt and trainer is not None:
+        try:
+            pt = trainer.detect_problem_type(df, target)
+        except Exception:
+            pt = None
+    if not pt:
+        try:
+            s = df[target]
+            nunq = s.nunique(dropna=True)
+            pt = "classification" if s.dtype.kind in ("O","U","S") or nunq <= max(2, int((len(s) or 1) ** 0.5)) else "regression"
+        except Exception:
+            pt = "regression"
+    st.session_state["problem_type"] = pt
+    return pt
+
+# === AI config (safe, single header) =====================================
+def render_ai_config_simple(providers: Optional[Dict[str, Dict[str, Any]]] = None, *, show_title: bool = False):
+    if show_title:
         st.markdown("### 🤖 Konfiguracja AI")
 
-        secure_mgr = SecureKeyManager()
+    secure_mgr = SecureKeyManager()
+    try:
+        import keyring as system_keyring  # type: ignore
+    except Exception:
+        system_keyring = None  # type: ignore
+    try:
+        from backend.security_manager import CredentialManager
+        credential_manager = CredentialManager()
+    except Exception:
+        credential_manager = None
 
-        # --- helpery bezpieczeństwa z realnym keyringiem + fallback ---
-        def _has_key(provider: str) -> bool:
-            """Sprawdź czy mamy klucz dla dostawcy."""
-            # 1) Session (szyfrowany)
-            try:
-                dec = secure_mgr.get_key(provider)
-                if truthy_df_safe(dec):
-                    return True
-            except Exception:
-                pass
+    def _truthy(x) -> bool:
+        try:
+            return bool(x) and str(x).lower() not in {"none","nan","null",""}
+        except Exception:
+            return False
 
-            # 2) System keyring
+    def _has_key_session(provider: str) -> bool:
+        try:
+            return _truthy(secure_mgr.get_key(provider))
+        except Exception:
+            return False
+
+    def _has_key_external(provider: str) -> bool:
+        # Keyring / ENV (read-only indicator; nie barwimy nim statusu głównego)
+        try:
             if system_keyring is not None:
-                try:
-                    val = system_keyring.get_password("TMIV", provider)
-                    if truthy_df_safe(val):
-                        return True
-                except Exception:
-                    pass
-
-            # 3) CredentialManager (ENV / session / keyring)
-            try:
-                if truthy_df_safe(credential_manager) and hasattr(credential_manager, "get_api_key"):
-                    val = credential_manager.get_api_key(provider)
-                    return bool(val and val.strip())
-            except Exception:
-                pass
-
-            # 4) Legacy session backup
-            return bool(st.session_state.get(f"{provider}_api_key"))
-
-        def _store_key(provider: str, api_key: str) -> bool:
-            """Bezpiecznie zapisz klucz API (keyring → Fernet/session)."""
-            try:
-                # Walidacja prefiksu (+ sanity trim)
-                api_key = str(api_key or "").strip()
-                if provider == "openai" and not api_key.startswith("sk-"):
-                    st.error("❌ OpenAI klucz musi zaczynać się od 'sk-'")
-                    return False
-                if provider == "anthropic" and not api_key.startswith("sk-ant-"):
-                    st.error("❌ Anthropic klucz musi zaczynać się od 'sk-ant-'")
-                    return False
-
-                # 1) System keyring (jeśli dostępny)
-                if system_keyring is not None:
-                    try:
-                        system_keyring.set_password("TMIV", provider, api_key)
-                        # lokalny backup w sesji (szyfrowany)
-                        secure_mgr.store_key(provider, api_key)
-                        return True
-                    except Exception:
-                        pass
-
-                # 2) Szyfrowana sesja (fallback)
-                if secure_mgr.store_key(provider, api_key):
-                    # (opcjonalny) legacy session backup, jeśli ktoś go czyta poza UI
-                    st.session_state[f"{provider}_api_key"] = api_key
-                    st.warning("⚠️ Zapisano w sesji (szyfrowane). Rozważ użycie systemowego keyringu.")
+                if _truthy(system_keyring.get_password("TMIV", provider)):
                     return True
+        except Exception:
+            pass
+        try:
+            if credential_manager and hasattr(credential_manager, "get_api_key"):
+                val = credential_manager.get_api_key(provider)  # może zwrócić z ENV
+                return bool(val and val.strip())
+        except Exception:
+            pass
+        return False
 
-                return False
-
-            except Exception as e:
-                st.error(f"❌ Nie udało się zapisać klucza: {e}")
-                # Ostateczny fallback – zwykła sesja (niezalecane)
-                try:
-                    st.session_state[f"{provider}_api_key"] = api_key
-                    st.warning("⚠️ Klucz zapisany tylko w sesji ze względu na błąd keyringu")
-                    return True
-                except Exception:
-                    return False
-
-        def _remove_key(provider: str) -> bool:
-            """Bezpiecznie usuń klucz API z keyringu i sesji."""
-            ok = False
-            # 1) System keyring
-            if system_keyring is not None:
-                try:
-                    system_keyring.delete_password("TMIV", provider)
-                    ok = True
-                except Exception:
-                    pass
-            # 2) Szyfrowana sesja
+    def _store_key(provider: str, api_key: str) -> bool:
+        api_key = str(api_key or "").strip()
+        if provider == "openai" and not api_key.startswith("sk-"):
+            st.error("❌ OpenAI klucz musi zaczynać się od 'sk-'"); return False
+        if provider == "anthropic" and not api_key.startswith("sk-ant-"):
+            st.error("❌ Anthropic klucz musi zaczynać się od 'sk-ant-'"); return False
+        try:
+            secure_mgr.set_key(provider, api_key)
             try:
-                if f"{provider}_api_key_encrypted" in st.session_state:
-                    del st.session_state[f"{provider}_api_key_encrypted"]
-                    ok = True
+                import keyring as _kr  # type: ignore
+                _kr.set_password("TMIV", provider, api_key)  # best-effort
             except Exception:
                 pass
-            # 3) Legacy session
             try:
-                if f"{provider}_api_key" in st.session_state:
-                    del st.session_state[f"{provider}_api_key"]
-                    ok = True
+                st.toast("🔒 Klucz zapisany", icon="✅")
             except Exception:
-                pass
-            return ok
+                st.success("🔒 Klucz zapisany")
+            return True
+        except Exception:
+            st.error("❌ Nie udało się zapisać klucza API.")
+            return False
 
-        # --- UI: status + przycisk wejścia do panelu ---
-        has_openai = _has_key("openai")
-        has_anthropic = _has_key("anthropic")
-
-        if has_openai or has_anthropic:
-            providers = []
-            if truthy_df_safe(has_openai):
-                providers.append("OpenAI GPT")
-            if truthy_df_safe(has_anthropic):
-                providers.append("Anthropic Claude")
-
-            provider_text = " + ".join(providers)
-            st.success(f"🔒 Zabezpieczone: {provider_text}")
-
-            if st.button("🔧 Zarządzaj kluczami", key="btn_keys"):
-                st.session_state.show_secure_config = True
-                rerun_once()
-        else:
-            st.info("🎭 Tryb: Symulacja AI")
-            if st.button("🚀 Dodaj bezpieczne API", key="btn_add_keys"):
-                st.session_state.show_secure_config = True
-                rerun_once()
-
-        # --- Panel zarządzania kluczami ---
-        if st.session_state.get("show_secure_config", False):
-            st.markdown("---")
-            with st.container():
-                st.markdown("### 🔒 Bezpieczne zarządzanie API")
-
-                # Status obecnych kluczy
-                col_status1, col_status2 = st.columns(2)
-                with col_status1:
-                    if truthy_df_safe(has_openai):
-                        st.success("✅ OpenAI: Skonfigurowany")
-                    else:
-                        st.error("❌ OpenAI: Brak klucza")
-                with col_status2:
-                    if truthy_df_safe(has_anthropic):
-                        st.success("✅ Anthropic: Skonfigurowany")
-                    else:
-                        st.error("❌ Anthropic: Brak klucza")
-
-                # Wybór dostawcy
-                provider = st.selectbox(
-                    "🎯 Wybierz dostawcę:",
-                    ["openai", "anthropic"],
-                    key="provider_select",
-                    help="Wybierz którego dostawcę chcesz skonfigurować"
-                )
-
-                # Input dla klucza
-                placeholder = "sk-..." if provider == "openai" else "sk-ant-..."
-                api_key = st.text_input(
-                    f"🔑 Klucz {provider.upper()}",
-                    type="password",
-                    placeholder=placeholder,
-                    help="Klucz będzie zaszyfrowany i bezpiecznie przechowany",
-                    key="api_key_input",
-                )
-
-                # Przyciski akcji
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    if st.button("💾 Zapisz", key="btn_save_key", use_container_width=True):
-                        if not truthy_df_safe(api_key):
-                            st.warning("⚠️ Wpisz klucz przed zapisem")
-                        else:
-                            if _store_key(provider, api_key):
-                                st.success("✅ Klucz zapisany pomyślnie!")
-                                time.sleep(1)  # Krótka pauza
-                                st.session_state.show_secure_config = False
-                                rerun_once()
-
-                with col2:
-                    current_has_key = _has_key(provider)
-                    if st.button(
-                        "🗑️ Usuń",
-                        key="btn_remove_key",
-                        use_container_width=True,
-                        disabled=not current_has_key
-                    ):
-                        if _remove_key(provider):
-                            st.success(f"✅ Klucz {provider} usunięty!")
-                            time.sleep(1)
-                            st.session_state.show_secure_config = False
-                            rerun_once()
-
-                with col3:
-                    if st.button("❌ Zamknij", key="btn_cancel_key", use_container_width=True):
-                        st.session_state.show_secure_config = False
-                        rerun_once()
-
-                st.info("🔒 Preferowany storage: systemowy keyring. Fallback: szyfrowana sesja (Fernet).")
-
-    def _render_status_indicator(self):
-        """Renderuje wskaźnik statusu aplikacji"""
-        st.markdown("### 📊 Status aplikacji")
-
-        # Status wczytania danych
-        if st.session_state.get('data_loaded', False):
-            st.success("✅ Dane wczytane")
-        else:
-            st.error("❌ Brak danych")
-
-        # Status treningu modelu
-        if st.session_state.get('model_trained', False):
-            st.success("✅ Model wytrenowany")
-        else:
-            st.warning("⏳ Model nie wytrenowany")
-
-        # Status analizy
-        if st.session_state.get('analysis_complete', False):
-            st.success("✅ Analiza zakończona")
-        else:
-            st.info("🔄 Analiza w toku")
-
-    def _render_session_info(self):
-        """Renderuje informacje o sesji"""
-        st.subheader("🗂️ Informacje o sesji")
-
-        df = st.session_state.get("df", None)
-
-        # Domyślne wartości gdy danych nie ma
-        rows = cols = 0
-        memory_usage_mb = 0.0
-        shape_txt = "brak"
-
-        if isinstance(df, pd.DataFrame):
-            rows, cols = df.shape
-            try:
-                memory_usage_mb = float(df.memory_usage(deep=True).sum()) / (1024 ** 2)
-            except Exception:
-                memory_usage_mb = 0.0
-            shape_txt = f"{rows} × {cols}"
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("📄 Wiersze", f"{rows:,}")
-            st.metric("🔢 Kolumny", cols)
-        with col2:
-            st.metric("💾 MB", f"{_fmt_float_safe(memory_usage_mb, 1)}")
-            st.metric("📐 Kształt", shape_txt)
-
-    def _reset_session(self):
-        """Resetuje sesję aplikacji"""
-        keys_to_reset = [
-            'df', 'data_loaded', 'model_trained', 'analysis_complete',
-            'model_results', 'target_column', 'problem_type', 'show_secure_config'
-        ]
-
-        for key in keys_to_reset:
-            if key in st.session_state:
-                del st.session_state[key]
-
-        st.success("🔄 Sesja została zresetowana!")
-        rerun_once()
-
-    def _render_export_section(self):
-        """NAPRAWIONA sekcja eksportu - aktywna automatycznie po treningu"""
-        st.markdown("### 💾 Eksport wyników")
-
-        # Sprawdź czy model został wytrenowany
-        model_trained = st.session_state.get('model_trained', False)
-        model_results = st.session_state.get('model_results', {})
-
-        if not model_trained or not model_results:
-            st.info("ℹ️ Eksport będzie dostępny po wytrenowaniu modelu")
-            return
-
-        # Model wytrenowany - pokaż opcje eksportu
-        st.success("✅ Model wytrenowany - eksport aktywny!")
-
-        # Przygotuj dane do eksportu
-        results = model_results
-        target_column = st.session_state.get('target_column', 'target')
-        problem_type = st.session_state.get('problem_type', 'Unknown')
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        model_trainer = st.session_state.get('ml_trainer_instance')
-
-        st.markdown("#### 📦 Pobierz pliki:")
-
-        # Siatka przycisków eksportu 2x3
-        col1, col2 = st.columns(2)
-
-        with col1:
-            # 1. JSON Report - zawsze dostępny
-            json_data = self._generate_json_report(results, target_column, problem_type)
-            # Odporne serializowanie
-            json_string = json.dumps(_to_serializable(json_data), indent=2, ensure_ascii=False)
-
-            st.download_button(
-                label="📄 Pobierz JSON Report",
-                data=json_string,
-                file_name=f"ML_Report_{timestamp}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-
-            # 3. HTML Report - zawsze dostępny
-            html_content = self._generate_html_report(results, target_column, problem_type)
-
-            st.download_button(
-                label="🌐 Pobierz HTML Report",
-                data=html_content,
-                file_name=f"ML_Report_{timestamp}.html",
-                mime="text/html",
-                use_container_width=True
-            )
-
-            # 5. TXT Summary - zawsze dostępny
-            txt_content = self._generate_txt_summary(results, target_column, problem_type)
-
-            st.download_button(
-                label="📝 Pobierz TXT Summary",
-                data=txt_content,
-                file_name=f"ML_Summary_{timestamp}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-
-        with col2:
-            # 2. CSV Feature Importance - jeśli dostępne
-            if 'feature_importance' in results and isinstance(results['feature_importance'], pd.DataFrame):
-                csv_data = results['feature_importance'].to_csv(index=False)
-
-                st.download_button(
-                    label="📊 Pobierz CSV Features",
-                    data=csv_data,
-                    file_name=f"Feature_Importance_{timestamp}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            else:
-                st.info("📊 CSV Features\n(niedostępne)")
-
-            # 4. Model Pickle - jeśli dostępny
-            try:
-                if truthy_df_safe(model_trainer) and hasattr(model_trainer, 'trained_models') and target_column in model_trainer.trained_models:
-                    model_data = model_trainer.trained_models[target_column]
-                    pickled_model = pickle.dumps(model_data)
-
-                    st.download_button(
-                        label="🤖 Pobierz Model PKL",
-                        data=pickled_model,
-                        file_name=f"Trained_Model_{timestamp}.pkl",
-                        mime="application/octet-stream",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("🤖 Model PKL\n(niedostępny)")
-            except Exception as e:
-                st.info(f"🤖 Model PKL\n(błąd: {str(e)[:20]}...)")
-
-            # 6. Wszystko w ZIP - premium opcja
-            if st.button("📦 Pobierz wszystko (ZIP)", key="btn_export_zip_all", use_container_width=True):
-                import zipfile
-                import io
-
-                # Utwórz ZIP w pamięci
-                zip_buffer = io.BytesIO()
-
-                with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-                    # Dodaj JSON
-                    zip_file.writestr(f"ML_Report_{timestamp}.json", json_string)
-
-                    # Dodaj HTML
-                    zip_file.writestr(f"ML_Report_{timestamp}.html", html_content)
-
-                    # Dodaj TXT
-                    zip_file.writestr(f"ML_Summary_{timestamp}.txt", txt_content)
-
-                    # Dodaj CSV jeśli dostępny
-                    if 'feature_importance' in results and isinstance(results['feature_importance'], pd.DataFrame):
-                        csv_data = results['feature_importance'].to_csv(index=False)
-                        zip_file.writestr(f"Feature_Importance_{timestamp}.csv", csv_data)
-
-                    # Dodaj model jeśli dostępny
-                    try:
-                        if truthy_df_safe(model_trainer) and hasattr(model_trainer, 'trained_models') and target_column in model_trainer.trained_models:
-                            model_data = model_trainer.trained_models[target_column]
-                            pickled_model = pickle.dumps(model_data)
-                            zip_file.writestr(f"Trained_Model_{timestamp}.pkl", pickled_model)
-                    except Exception:
-                        pass
-
-                zip_buffer.seek(0)
-
-                st.download_button(
-                    label="⬇️ Pobierz kompletny pakiet",
-                    data=zip_buffer.getvalue(),
-                    file_name=f"TMIV_Complete_Export_{timestamp}.zip",
-                    mime="application/zip",
-                    use_container_width=True
-                )
-
-    def _generate_json_report(self, results: Dict, target_column: str, problem_type: str) -> Dict:
-        """Generuje pełny JSON report"""
-        return {
-            'metadata': {
-                'timestamp': datetime.now().isoformat(),
-                'app_version': '2.1.0',
-                'created_by': 'Marksio AI Solutions - The Most Important Variables'
-            },
-            'dataset_info': {
-                'target_column': target_column,
-                'problem_type': problem_type,
-                'shape': list(st.session_state.df.shape) if 'df' in st.session_state else None,
-                'memory_usage_mb': float(st.session_state.df.memory_usage(deep=True).sum() / (1024**2)) if 'df' in st.session_state else None
-            },
-            'model_performance': {
-                'best_model': results.get('best_model', ''),
-                'all_metrics': {k: float(v) if isinstance(v, (int, float, np.number)) else v
-                                for k, v in results.items()
-                                if k in ['r2', 'mae', 'mse', 'rmse', 'mape', 'explained_variance', 'max_error', 'mean_residual', 'std_residual', 'accuracy', 'precision', 'recall', 'f1']},
-                # ✅ Odporne serializowanie porównania modeli
-                'model_comparison': _to_serializable(results.get('model_scores', {}))
-            },
-            'feature_analysis': {
-                'feature_importance': results.get('feature_importance', pd.DataFrame()).to_dict('records') if 'feature_importance' in results else [],
-                'top_10_features': results.get('feature_importance', pd.DataFrame()).head(10).to_dict('records') if 'feature_importance' in results else []
-            },
-            'recommendations': self._generate_export_recommendations(results, problem_type)
+    if providers is None:
+        providers = {
+            "openai": {"label": "OpenAI API key", "placeholder": "sk-..."},
+            "anthropic": {"label": "Anthropic API key", "placeholder": "sk-ant-..."},
         }
 
-    def _generate_html_report(self, results: Dict, target_column: str, problem_type: str) -> str:
-        """Generuje HTML report z wizualizacjami"""
+    for prov, meta in providers.items():
+        st.write(f"**{meta.get('label', prov)}**")
+        c = st.container()
+        with c:
+            col_in, col_btn, col_status = st.columns([5,2,2])
+            with col_in:
+                val = st.text_input("", type="password",
+                                    placeholder=meta.get("placeholder",""), key=f"__input_{prov}")
+            with col_btn:
+                if st.button("Zapisz", key=f"btn_save_{prov}", use_container_width=True):
+                    _store_key(prov, val)
+            with col_status:
+                ok_session = _has_key_session(prov)
+                st.write("Status:")
+                st.markdown(f'<span class="tmiv-badge {"ok" if ok_session else ""}">{"✅" if ok_session else "⚪"}</span>', unsafe_allow_html=True)
+            # Uwaga o zewnętrznym źródle
+            if not _truthy(val):
+                ext = _has_key_external(prov)
+                if ext and not ok_session:
+                    st.caption("🔎 Wykryto klucz w systemie (keyring/ENV). Zapisz tutaj, aby używać w tej sesji.")
 
-        html_template = f"""
-        <!DOCTYPE html>
-        <html lang="pl">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>ML Analysis Report - {target_column}</title>
-            <style>
-                body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background: #f5f5f5; }}
-                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px; }}
-                .section {{ background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                .metrics {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }}
-                .metric {{ background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; border-left: 4px solid #667eea; }}
-                .metric h3 {{ margin: 0; color: #667eea; font-size: 1.5em; }}
-                .metric p {{ margin: 5px 0 0 0; color: #666; }}
-                .feature-list {{ list-style: none; padding: 0; }}
-                .feature-list li {{ background: #e3f2fd; margin: 5px 0; padding: 10px; border-radius: 5px; border-left: 3px solid #2196f3; }}
-                .bar {{ background: #667eea; height: 5px; border-radius: 3px; margin-top: 5px; }}
-                .footer {{ text-align: center; margin-top: 40px; color: #666; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>The Most Important Variables</h1>
-                <h2>Advanced ML Analysis Report: {target_column}</h2>
-                <p>Wygenerowano: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                <p>Marksio AI Solutions</p>
-            </div>
+        st.markdown("---")
 
-            <div class="section">
-                <h2>Podsumowanie modelu</h2>
-                <p><strong>Typ problemu:</strong> {problem_type}</p>
-                <p><strong>Najlepszy model:</strong> {results.get('best_model', 'N/A')}</p>
-                <p><strong>Dataset:</strong> {st.session_state.df.shape if 'df' in st.session_state else 'N/A'}</p>
-            </div>
+# === Session info (opcjonalne) ===========================================
+def _render_session_info():
+    import platform, sys
+    st.subheader("ℹ️ Informacje o sesji")
+    df = st.session_state.get("df")
+    rows = int(df.shape[0]) if isinstance(df, pd.DataFrame) else 0
+    cols = int(df.shape[1]) if isinstance(df, pd.DataFrame) else 0
+    target = st.session_state.get("target") or "—"
+    problem_type = st.session_state.get("problem_type") or "—"
+    model_trained = bool(st.session_state.get("model_trained") or st.session_state.get("trained_model"))
+    analysis_state = st.session_state.get("analysis_state") or ("in_progress" if st.session_state.get("analysis_running") else "idle")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Dane", "✅" if df is not None else "❌"); st.caption(f"{rows} × {cols}")
+    with c2:
+        st.metric("Target", target); st.caption(f"Typ: {problem_type}")
+    with c3:
+        st.metric("Model", "Wytrenowany" if model_trained else "Brak"); st.caption("⏳" if not model_trained else "✅")
+    with c4:
+        st.metric("Analiza", "w toku" if analysis_state == "in_progress" else "idle"); st.caption("🔄" if analysis_state == "in_progress" else "⏸️")
+    try:
+        from backend.security_manager import CredentialManager
+        cm = CredentialManager()
+        openai_ok = False; anthropic_ok = False
+        # Celowo nie ufamy starym zmiennym sesji
+        if cm.get_api_key("openai"): openai_ok = True
+        if cm.get_api_key("anthropic"): anthropic_ok = True
+    except Exception:
+        openai_ok = False; anthropic_ok = False
+    st.markdown(f"**OpenAI klucz:** {'🔒 OK' if openai_ok else '⚪ brak'} &nbsp;|&nbsp; **Anthropic klucz:** {'🔒 OK' if anthropic_ok else '⚪ brak'}")
+    st.divider()
+    st.caption("System")
+    try:
+        import streamlit, pandas, sklearn
+        st.write(f"Python: `{sys.version.split()[0]}` · Platforma: `{platform.system()} {platform.release()}` · "
+                 f"Streamlit: `{streamlit.__version__}` · pandas: `{pandas.__version__}` · scikit-learn: `{sklearn.__version__}`")
+    except Exception:
+        st.write(f"Python: `{sys.version.split()[0]}` · Platforma: `{platform.system()} {platform.release()}`")
 
-            <div class="section">
-                <h2>Metryki wydajności</h2>
-                <div class="metrics">
-        """
+# === Export section + PDF ================================================
+def _render_export_section():
+    import datetime
+    st.subheader("⬇️ Eksport / Pobieranie")
+    df = st.session_state.get("df")
+    model = st.session_state.get("trained_model") or st.session_state.get("model")
+    metrics = st.session_state.get("metrics") or st.session_state.get("last_metrics") or {}
+    problem_type = st.session_state.get("problem_type"); target = st.session_state.get("target")
 
-        # Dodaj metryki
-        if problem_type == "Regresja":
-            metrics = [
-                ("R² Score", results.get('r2', 0), "Współczynnik determinacji"),
-                ("MAE", results.get('mae', 0), "Średni błąd bezwzględny"),
-                ("RMSE", results.get('rmse', 0), "Pierwiastek błędu kwadratowego"),
-                ("MAPE", f"{_fmt_float_safe(results.get('mape', 0), 2)}%", "Błąd procentowy")
-            ]
-        else:
-            metrics = [
-                ("Accuracy", results.get('accuracy', 0), "Dokładność"),
-                ("Precision", results.get('precision', 0), "Precyzja"),
-                ("Recall", results.get('recall', 0), "Czułość"),
-                ("F1-Score", results.get('f1', 0), "F1 Score")
-            ]
+    if isinstance(df, pd.DataFrame):
+        try:
+            csv_bytes = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📄 Pobierz dane (CSV)", data=csv_bytes, file_name="data.csv", mime="text/csv", use_container_width=True)
+        except Exception as e:
+            st.warning(f"Nie udało się przygotować CSV: {e}")
 
-        for name, value, desc in metrics:
-            if isinstance(value, float):
-                value = f"{_fmt_float_safe(value, 4)}"
-            html_template += f"""
-                    <div class="metric">
-                        <h3>{value}</h3>
-                        <p>{name}</p>
-                        <small>{desc}</small>
-                    </div>
-            """
+    snapshot = {
+        "generated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "problem_type": problem_type, "target": target, "metrics": metrics,
+        "df_shape": (int(df.shape[0]), int(df.shape[1])) if isinstance(df, pd.DataFrame) else None,
+    }
+    snap_bytes = json.dumps(snapshot, ensure_ascii=False, indent=2).encode("utf-8")
+    st.download_button("🧠 Pobierz snapshot sesji (JSON)", data=snap_bytes, file_name="session_snapshot.json",
+                       mime="application/json", use_container_width=True)
 
-        # Dodaj feature importance
-        html_template += """
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>Najważniejsze cechy</h2>
-                <ul class="feature-list">
-        """
-
-        if 'feature_importance' in results and isinstance(results['feature_importance'], pd.DataFrame):
-            top_features = results['feature_importance'].head(10)
-            for _, row in top_features.iterrows():
-                # Obsłuż różne nazwy kolumn z ważnością
-                val = (
-                    row.get('importance')
-                    if 'importance' in row
-                    else row.get('importance_mean', None)
-                )
-                if val is None:
-                    # Ostateczny fallback: pierwsza kolumna numeryczna
-                    nums = [float(v) for v in row.values if isinstance(v, (int, float, np.number))]
-                    val = nums[0] if nums else 0.0
-                width_pct = max(0.0, min(100.0, float(val) * 100.0))
-                html_template += f"""
-                    <li>
-                        <strong>{row.get('feature','(feature)')}</strong>: {_fmt_float_safe(val, 4)}
-                        <div class="bar" style="width: {width_pct:.1f}%;"></div>
-                    </li>
-                """
-
-        html_template += """
-                </ul>
-            </div>
-
-            <div class="footer">
-                <p>Made by Marksio AI Solutions | The Most Important Variables v2.1.0</p>
-            </div>
-        </body>
-        </html>
-        """
-
-        return html_template
-
-    def _generate_txt_summary(self, results, target_column, problem_type):
-        """Generuje podsumowanie w formacie tekstowym"""
-
-        summary = f"""
-=== RAPORT ANALIZY MACHINE LEARNING ===
-Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Platforma: The Most Important Variables v2.1.0
-Autor: Marksio AI Solutions
-
-DANE:
-- Zmienna docelowa: {target_column}
-- Typ problemu: {problem_type}
-- Najlepszy model: {results.get('best_model', 'N/A')}
-
-METRYKI WYDAJNOŚCI:
-"""
-
-        if problem_type == "Regresja":
-            summary += f"""- R² Score: {_fmt_float_safe(results.get('r2', 'N/A'), 4)}
-- MAE: {_fmt_float_safe(results.get('mae', 'N/A'), 4)}
-- RMSE: {_fmt_float_safe(results.get('rmse', 'N/A'), 4)}
-- MAPE: {_fmt_float_safe(results.get('mape', 'N/A'), 2)}%"""
-        else:
-            summary += f"""- Accuracy: {_fmt_float_safe(results.get('accuracy', 'N/A'), 4)}
-- Precision: {_fmt_float_safe(results.get('precision', 'N/A'), 4)}
-- Recall: {_fmt_float_safe(results.get('recall', 'N/A'), 4)}
-- F1-Score: {_fmt_float_safe(results.get('f1', 'N/A'), 4)}"""
-
-        if 'feature_importance' in results and isinstance(results['feature_importance'], pd.DataFrame):
-            summary += "\n\nNAJWAŻNIEJSZE CECHY:\n"
-            top_features = results['feature_importance'].head(10)
-            for _, row in top_features.iterrows():
-                val = row.get('importance', row.get('importance_mean', 0.0))
-                summary += f"- {row.get('feature','(feature)')}: {_fmt_float_safe(val, 4)}\n"
-
-        summary += f"\n\nREKOMENDACJE:\n"
-        recommendations = self._generate_export_recommendations(results, problem_type)
-        for rec in recommendations:
-            summary += f"- {rec}\n"
-
-        summary += f"\n\n=== KONIEC RAPORTU ===\nWygenerowano przez: Marksio AI Solutions\nPlatforma: The Most Important Variables v2.1.0"
-
-        return summary
-
-    def _generate_export_recommendations(self, results, problem_type):
-        """Generuje rekomendacje dla eksportu"""
-        recommendations = []
-
-        if problem_type == "Regresja":
-            r2_score = results.get('r2', 0)
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        if isinstance(df, pd.DataFrame):
             try:
-                r2_score = float(r2_score)
-            except Exception:
-                r2_score = 0.0
-            if r2_score > 0.8:
-                recommendations.append("Model ma bardzo dobrą wydajność - można go używać do predykcji")
-            elif r2_score > 0.6:
-                recommendations.append("Model ma umiarkowaną wydajność - warto rozważyć dodatkowe feature engineering")
-            else:
-                recommendations.append("Model wymaga poprawy - zbadaj outliers i jakość danych")
+                zf.writestr("data_preview.csv", df.head(1000).to_csv(index=False).encode("utf-8"))
+            except Exception: pass
+        try: zf.writestr("metrics.json", json.dumps(metrics, ensure_ascii=False, indent=2))
+        except Exception: pass
+        try:
+            if model is not None:
+                zf.writestr("model_info.txt", f"{type(model).__name__}")
+        except Exception: pass
+        try: zf.writestr("session.json", json.dumps(snapshot, ensure_ascii=False, indent=2))
+        except Exception: pass
+    st.download_button("🗜️ Pobierz pakiet wyników (ZIP)", data=buf.getvalue(), file_name="results_bundle.zip",
+                       mime="application/zip", use_container_width=True)
+
+    st.markdown("—"); st.caption("Jeśli chcesz pełny PDF z wykresami, kliknij poniżej:")
+    if st.button("📄 Generuj raport PDF", use_container_width=True):
+        pdf_bytes = _generate_pdf_report(snapshot=snapshot)
+        if pdf_bytes:
+            st.download_button("📥 Pobierz raport PDF", data=pdf_bytes, file_name="report.pdf",
+                               mime="application/pdf", use_container_width=True)
         else:
-            accuracy = results.get('accuracy', 0)
-            try:
-                accuracy = float(accuracy)
-            except Exception:
-                accuracy = 0.0
-            if accuracy > 0.9:
-                recommendations.append("Model ma doskonałą dokładność klasyfikacji")
-            elif accuracy > 0.8:
-                recommendations.append("Model ma dobrą dokładność - można go używać w produkcji")
-            else:
-                recommendations.append("Model wymaga optymalizacji - rozważ inne algorytmy lub więcej danych")
+            st.warning("Nie udało się wygenerować PDF. Zainstaluj opcjonalną zależność: `reportlab`.")
 
-        recommendations.append("Sprawdź feature importance aby zrozumieć kluczowe zmienne")
-        recommendations.append("Rozważ zbieranie dodatkowych danych dla słabych cech")
-        recommendations.append("Użyj modelu do automatyzacji procesów biznesowych")
+def _generate_pdf_report(snapshot: dict):
+    from io import BytesIO
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.units import cm
+        from reportlab.lib.utils import ImageReader
+    except Exception:
+        return None
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4); width, height = A4
+    c.setFont("Helvetica-Bold", 16); c.drawString(2*cm, height-2*cm, "THE MOST IMPORTANT VARIABLES — Raport")
+    c.setFont("Helvetica", 10)
+    import datetime as _dt
+    c.drawString(2*cm, height-2.6*cm, f"Data: {_dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    c.drawString(2*cm, height-3.1*cm, f"Typ: {snapshot.get('problem_type')}, Target: {snapshot.get('target')}")
+    shape = snapshot.get("df_shape") or (0,0)
+    c.drawString(2*cm, height-3.6*cm, f"Dane: {shape[0]} wierszy × {shape[1]} kolumn")
+    y = height - 4.6*cm
+    c.setFont("Helvetica-Bold", 12); c.drawString(2*cm, y, "Metryki:"); y -= 0.6*cm
+    c.setFont("Helvetica", 10)
+    metrics = snapshot.get("metrics") or {}
+    if metrics:
+        for k, v in list(metrics.items())[:30]:
+            c.drawString(2.2*cm, y, f"• {k}: {v}"); y -= 0.5*cm
+            if y < 3*cm: c.showPage(); y = height - 2*cm
+    else:
+        c.drawString(2.2*cm, y, "Brak metryk.")
+    try:
+        charts = st.session_state.get("export_charts_png") or st.session_state.get("last_figs_png") or []
+        for img_bytes in charts[:6]:
+            if y < 8*cm: c.showPage(); y = height - 2*cm
+            img = ImageReader(BytesIO(img_bytes))
+            c.drawImage(img, 2*cm, y-6*cm, width=width-4*cm, height=6*cm, preserveAspectRatio=True, anchor='sw')
+            y -= 6.5*cm
+    except Exception: pass
+    c.showPage(); c.save(); return buf.getvalue()
 
-        return recommendations
+# === AI Recommendations / Training / Advanced ============================
+def render_ai_recommendations(context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    st.markdown("### 💡 Rekomendacje AI")
+    problem_type = (context or {}).get("problem_type") or st.session_state.get("problem_type") or "classification"
+    if problem_type == "regression":
+        metrics = ["rmse","mae","r2"]
+        models = [{"name": n} for n in ["LinearRegression","RandomForestRegressor","XGBoostRegressor","LightGBMRegressor","CatBoostRegressor"]]
+    else:
+        metrics = ["f1_weighted","roc_auc_ovr","accuracy"]
+        models = [{"name": n} for n in ["LogisticRegression","RandomForestClassifier","XGBoostClassifier","LightGBMClassifier","CatBoostClassifier","SVC"]]
+    recs: Dict[str, Any] = {"cv_folds":5,"metrics":metrics,"models":models,"problem_type":problem_type,"random_state":42,"test_size":0.2,"n_jobs":-1}
+    c1, c2 = st.columns(2)
+    with c1: st.write("**Typ problemu:**", problem_type); st.write("**Metryki:**", ", ".join(metrics))
+    with c2: st.write("**CV folds:**", recs["cv_folds"]); st.write("**Modele:**", ", ".join([m["name"] for m in models]))
+    st.caption("Podpowiedzi są startowe — możesz je zmodyfikować w 'Zaawansowane'.")
+    return recs
 
-    def render_dataset_metrics(self, metrics: dict | None = None):
-        """Bezpieczny placeholder: wyświetla podstawowe metryki zbioru danych.
-        Oczekuje słownika {'rows': int, 'cols': int, ...}. Nie rzuca wyjątków gdy brak.
-        """
-        st.subheader("Metryki zbioru")
-        if not truthy_df_safe(metrics):
-            st.info("Brak metryk do wyświetlenia.")
-            return
-        cols = st.columns(min(4, len(metrics)))
-        for i, (k, v) in enumerate(metrics.items()):
-            with cols[i % len(cols)]:
-                st.metric(label=str(k), value=str(v))
+def render_training_controls(recs: Dict[str, Any] | None = None) -> Tuple[bool, bool]:
+    st.markdown("### 🤖 Trening — sterowanie")
+    recs = dict(recs or {})
+    c1, c2, c3 = st.columns(3)
+    with c1: test_size = st.slider("Test size", 0.05, 0.4, float(recs.get("test_size", 0.2)), 0.05)
+    with c2: cv_folds = st.number_input("CV folds", 2, 20, int(recs.get("cv_folds", 5)))
+    with c3: random_state = st.number_input("Random state", 0, 9999, int(recs.get("random_state", 42)))
+    n_jobs = st.select_slider("Równoległość (n_jobs)", options=[-1,1,2,4,8,16], value=int(recs.get("n_jobs", -1)))
+    apply_recs = st.checkbox("Zastosuj rekomendacje AI", value=True, key="__apply_recs_train")
+    train_clicked = st.button("🚀 Rozpocznij trening", use_container_width=True)
+    st.session_state["train_params"] = {"test_size":float(test_size),"cv_folds":int(cv_folds),"random_state":int(random_state),"n_jobs":int(n_jobs),"apply_recs":bool(apply_recs)}
+    return bool(apply_recs), bool(train_clicked)
 
-
-def render_ai_recommendations(plan: Dict[str, Any], recs: Dict[str, Any]):
-    st.markdown("### Rekomendacje AI - przygotowanie danych")
-    with st.expander("Pokaż kroki AI Data Prep", expanded=True):
-        steps = plan.get("steps", [])
-        for i, step in enumerate(steps, 1):
-            st.markdown(f"**{i}. {step.get('name','Step')}** - {step.get('detail','')}")
-
-    st.markdown("### Rekomendacje AI - trening")
-    st.write(f"Problem: **{recs.get('problem','?')}**, Folds: **{recs.get('cv_folds',5)}**")
-    st.write("Metryki (priorytet pierwszej):", recs.get("metrics", []))
-    st.write("Modele (kandydaci):", [m['name'] for m in recs.get("models", [])])
-
-
-def render_training_controls():
-    """
-    Przyciski sterujące + hook 'Ustaw rekomendacje AI' (auto dobór rodzin modeli).
-    Po kliknięciu ustawiamy st.session_state['final_config']['model_families']
-    ORAZ st.session_state['model_families'] (key multiselecta), a na końcu rerun_once().
-    """
-    import numpy as np
-    import pandas as pd
-    import streamlit as st
-
-    def _detect_problem_fallback(df: pd.DataFrame, target: str) -> str:
-        if truthy_df_safe(target) and target in df.columns:
-            y = df[target].dropna()
-            if y.dtype.name in ("object", "bool", "category"):
-                return "Klasyfikacja"
-            if y.nunique() <= 20 and not np.issubdtype(y.dtype, np.floating):
-                return "Klasyfikacja"
-            return "Regresja"
-        return "Regresja"
-
-    def _class_imbalance_ratio(y: pd.Series) -> float:
-        vc = y.value_counts(dropna=True)
-        if len(vc) < 2 or vc.min() == 0:
-            return 1.0
-        return float(vc.max()) / float(vc.min())
-
-    def _families_all():
-        return [
-            "linear", "tree", "random_forest", "gbm",
-            "xgboost", "lightgbm", "catboost",
-            "svm", "knn", "naive_bayes", "mlp"
-        ]
-
-    def _auto_select_model_families(df: pd.DataFrame, target_column: str, problem_type: str):
-        rows, cols = df.shape
-        X = df.drop(columns=[target_column], errors="ignore")
-        num_cols = X.select_dtypes(include=[np.number]).shape[1]
-        cat_cols = X.select_dtypes(include=["object", "category", "bool"]).shape[1]
-        families = []
-
-        if str(problem_type).lower().startswith("klasyf") or "class" in str(problem_type).lower():
-            families += ["linear", "tree", "random_forest", "gbm"]
-            if rows <= 100_000:
-                families += ["xgboost"]
-            families += ["lightgbm"]
-            if cat_cols > 0:
-                families += ["catboost"]
-            if rows < 2_000:
-                families += ["svm", "knn", "naive_bayes", "mlp"]
-            try:
-                imb = _class_imbalance_ratio(df[target_column].dropna())
-                if imb > 3:
-                    # wyrzuć delikatniejsze na niezbalansowanych
-                    families = [f for f in families if f not in ("knn", "svm", "naive_bayes")]
-                    families = list(dict.fromkeys(families + ["random_forest", "gbm", "lightgbm", "xgboost"]))
-            except Exception:
-                pass
-            if cols > 200:
-                families = [f for f in families if f not in ("knn", "svm", "mlp")]
-        else:
-            families += ["linear", "tree", "random_forest", "gbm", "lightgbm"]
-            if rows <= 100_000:
-                families += ["xgboost"]
-            if cat_cols > 0:
-                families += ["catboost"]
-            if rows < 3_000:
-                families += ["svm", "mlp"]
-            if cols > 200:
-                families = [f for f in families if f not in ("svm", "mlp")]
-
-        families = list(dict.fromkeys(families))
-        known = set(_families_all())
-        return [f for f in families if f in known]
-
-    # --- UI: guziki ---
-    cols = st.columns([1, 1, 2])
-    with cols[0]:
-        apply = st.button("Ustaw rekomendacje AI", use_container_width=True, key="btn_apply_ai_plan")
-    with cols[2]:
-        train = st.button("Trenuj model", type="primary", use_container_width=True, key="btn_train_model")
-
-    # --- HOOK: po kliknięciu ustaw stan i wymuś rerender ---
-    if truthy_df_safe(apply):
-        st.session_state["apply_ai_plan_clicked"] = True
-        st.session_state["ai_plan_applied"] = True
-
-        df = st.session_state.get('uploaded_df') or st.session_state.get('df')
-        target = (
-            st.session_state.get('target') or
-            st.session_state.get('target_column') or
-            st.session_state.get('y_col')
-        )
-
-        if isinstance(df, pd.DataFrame) and target and target in df.columns:
-            # problem type: z sesji / z trenera (jeśli masz) / fallback
-            problem_type = st.session_state.get('problem_type')
-            if not truthy_df_safe(problem_type):
-                app_ref = st.session_state.get('app')
-                if truthy_df_safe(app_ref) and getattr(app_ref, 'ml_trainer', None):
-                    try:
-                        problem_type = app_ref.ml_trainer.detect_problem_type(df, target)
-                    except Exception:
-                        problem_type = None
-            if not truthy_df_safe(problem_type):
-                problem_type = _detect_problem_fallback(df, target)
-
-            # auto-dobór rodzin
-            try:
-                auto_fams = _auto_select_model_families(df, target, problem_type)
-            except Exception:
-                auto_fams = _families_all()
-
-            # ZAPIS: final_config + stan widgetu (KLUCZOWE!)
-            st.session_state.setdefault('final_config', {})
-            st.session_state['final_config']['model_families'] = list(auto_fams)
-
-            # Ustawiamy *bezpośrednio* wartość pod key multiselecta:
-            st.session_state['model_families'] = list(auto_fams)
-            st.session_state["use_auto_families_default"] = True
-            st.session_state["model_families_user_override"] = False
-
-            # (opcjonalnie uzupełnij sensowne metryki/strategie)
-            st.session_state['final_config'].setdefault(
-                'recommended_strategy',
-                'balanced'
-            )
-            if str(problem_type).lower().startswith("klasyf"):
-                st.session_state['final_config'].setdefault('recommended_metric', 'f1_weighted')
-            else:
-                st.session_state['final_config'].setdefault('recommended_metric', 'r2')
-
-            # natychmiastowy rerun, żeby multiselect pokazał nowe wybory
-            rerun_once()
-        else:
-            st.warning("Brak danych lub kolumny celu – nie mogę dobrać rodzin modeli.")
-
-    return apply, train
-
-
-def render_advanced_overrides(recs: Dict[str, Any]):
+def render_advanced_overrides(recs: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
     st.markdown("### Zaawansowane (opcjonalne)")
     with st.expander("Pokaż / ukryj zaawansowane", expanded=False):
-        enable = st.checkbox("Chcę ręcznie nadpisać rekomendacje", value=False)
-        if not truthy_df_safe(enable):
+        enable = st.checkbox("Chcę ręcznie nadpisać rekomendacje", value=False, key="__adv_overrides")
+        if not enable:
             st.info("AI ustawi wszystko automatycznie. Możesz włączyć nadpisywanie powyżej.")
             return recs, False
-        mod = dict(recs)
+        mod = dict(recs or {})
+        cv_default = int(mod.get("cv_folds", 5) or 5); metrics_default = list(mod.get("metrics", []))
+        models_list = mod.get("models", recs.get("models", []) if recs else [])
+        model_names = [m.get("name") if isinstance(m, dict) else str(m) for m in models_list]
+        selected_default = model_names[:]
         c1, c2 = st.columns(2)
         with c1:
-            mod["cv_folds"] = st.number_input("CV folds", min_value=2, max_value=20, value=int(recs.get("cv_folds", 5)))
-            metrics_all = ["f1_weighted", "roc_auc_ovr", "accuracy", "precision_weighted", "recall_weighted", "rmse", "mae", "r2", "mape", "smape"]
-            mod["metrics"] = st.multiselect("Metryki (priorytet pierwszej)", metrics_all, default=recs.get("metrics", []))
+            mod["cv_folds"] = st.number_input("CV folds", min_value=2, max_value=20, value=cv_default)
+            metrics_all = ["f1_weighted","roc_auc_ovr","accuracy","precision_weighted","recall_weighted","rmse","mae","r2","mape","smape"]
+            mod["metrics"] = st.multiselect("Metryki (priorytet pierwszej)", metrics_all, default=metrics_default)
         with c2:
-            model_names = [m["name"] for m in recs.get("models", [])]
-            selected = st.multiselect("Modele do trenowania", model_names, default=model_names)
-            mod["models"] = [m for m in recs.get("models", []) if m["name"] in selected]
+            selected = st.multiselect("Modele do trenowania", model_names, default=selected_default)
+            mod["models"] = [m for m in models_list if (m.get("name") if isinstance(m, dict) else str(m)) in selected]
         st.success("Zastosowano nadpisania (tymczasowe w tej sesji).")
         return mod, True
+
+# === Sidebar (soft theme + navigation; version on TOP) ===================
+    ensure_auto_ai_col_desc(force=False)
+    # Sekcje (etykieta, slug)
+    sections: List[Tuple[str, str]] = [
+        ("📊 Analiza Danych", "analysis"),
+        ("🤖 Trening Modelu", "training"),
+        ("📈 Wyniki i Wizualizacje", "results"),
+        ("💡 Rekomendacje", "recommendations"),
+        ("📚 Dokumentacja", "docs"),
+    ]
+    labels = [s[0] for s in sections]
+    slug_by_label = {lbl: slug for lbl, slug in sections}
+    label_by_slug = {slug: lbl for lbl, slug in sections}
+
+    # Ustal indeks startowy z istniejącego stanu
+    current_label = st.session_state.get("page_label") or st.session_state.get("nav_page")
+    current_slug = st.session_state.get("page_slug")
+    if not current_label and current_slug and current_slug in label_by_slug:
+        current_label = label_by_slug[current_slug]
+    start_index = labels.index(current_label) if current_label in labels else 0
+
+    with st.sidebar:
+        # WERSJA NA GÓRZE
+        st.markdown('<div class="tmiv-version">🛠️ Wersja: 2.1.0 · Marksio AI Solutions</div>', unsafe_allow_html=True)
+
+        st.header("🤖 Konfiguracja AI")
+        try:
+            # ważne: show_title=False => brak drugiego nagłówka
+            render_ai_config_simple(show_title=False)
+        except Exception:
+            st.caption("Moduł konfiguracji AI niedostępny.")
+
+        st.divider()
+        st.subheader("📂 Wybierz sekcję")
+        chosen = st.radio("",
+                          labels,
+                          index=start_index,
+                          key="nav_page",
+                          label_visibility="collapsed",
+                          help="Wybierz główną sekcję aplikacji.")
+        # Zapisz w sesji
+        st.session_state["page_label"] = chosen
+        st.session_state["page_slug"] = slug_by_label.get(chosen, "analysis")
+        st.session_state["page"] = chosen
+
+        st.divider()
+        st.subheader("⚡ Szybkie akcje")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("🔁 Przeładuj", key="sb_reload", use_container_width=True, help="Przeładuj interfejs aplikacji."):
+                st.rerun()
+        with c2:
+            reset_clicked = st.button("🧹 Resetuj sesję", key="sb_reset", use_container_width=True, help="Wyczyść stan sesji.")
+        remove_df = st.checkbox("Usuń dane przy resecie", value=False, key="sb_remove_df", help="Zaznacz, aby skasować wczytane dane.")
+        if reset_clicked:
+            keys_to_keep = {"secure_storage", "fernet_key"}  # zachowaj szyfrowane klucze
+            df_obj = None if remove_df else st.session_state.get("df")
+            preserved = {k: st.session_state[k] for k in keys_to_keep if k in st.session_state}
+            st.session_state.clear(); st.session_state.update(preserved)
+            if df_obj is not None: st.session_state["df"] = df_obj
+            try:
+                st.toast("Sesja została zresetowana.", icon="🧹")
+            except Exception:
+                st.success("Sesja została zresetowana.")
+            st.rerun()
+
+        # WERSJA na dole usuwamy (przeniesiona na górę)
+    return chosen
+
+# === UIComponents class (shims + statics) ================================
+class UIComponents:
+    _render_session_info = staticmethod(_render_session_info)
+    _render_export_section = staticmethod(_render_export_section)
+
+    def render_header(self, title: str = "THE MOST IMPORTANT VARIABLES - Advanced ML Platform v2.0", subtitle: str = "Zaawansowana platforma AI/ML"):
+        st.title("🎯 " + str(title)); st.caption("🚀 " + str(subtitle))
+
+    def render_topbar(self, *args, **kwargs):
+        return self.render_header(*args, **kwargs)
+
+    def render_footer(self):
+        st.markdown("---"); st.caption("🛠️ Wersja: 2.1.0 · Marksio AI Solutions · Advanced ML Platform")
+
+    def render_session_info(self):
+        return _render_session_info()
+
+    def render_export_section(self):
+        return _render_export_section()
+
+    def render_sidebar(self) -> str:
+        return render_sidebar_clean()
+
+    def render_sidebar_clean(self) -> str:
+        return render_sidebar_clean()
+
+    def __getattr__(self, name: str):
+        def _noop(*args, **kwargs):
+            return None
+        return _noop
+
+
+# === Auto refresh of AI column descriptions ===============================
+def _df_signature(df: pd.DataFrame) -> str:
+    try:
+        import hashlib
+        sig = hashlib.sha256()
+        sig.update("|".join(map(str, df.columns)).encode("utf-8"))
+        sig.update("|".join(map(str, df.dtypes.astype(str))).encode("utf-8"))
+        # sample up to 200 rows for stability
+        preview = df.head(200).to_json(orient="split", index=False)
+        sig.update(preview.encode("utf-8"))
+        return sig.hexdigest()
+    except Exception:
+        try:
+            return str((tuple(df.columns), tuple(map(str, df.dtypes)), int(df.shape[0])))
+        except Exception:
+            return "df_sig_fallback"
+
+def _compute_ai_col_desc(df: pd.DataFrame) -> Dict[str, str]:
+    """Try backend AI recommender; fallback to heuristics. Returns {col: description}."""
+    desc: Dict[str, str] = {}
+    # 1) Backend integration if available
+    try:
+        from backend.ai_integration import AIRecommender  # type: ignore
+        ai = AIRecommender()
+        # prefer describe_columns, fallback to explain_columns
+        if hasattr(ai, "describe_columns"):
+            maybe = ai.describe_columns(df)  # expected dict
+            if isinstance(maybe, dict) and maybe:
+                return {str(k): str(v) for k, v in maybe.items()}
+        if hasattr(ai, "explain_columns"):
+            maybe = ai.explain_columns(df)
+            if isinstance(maybe, dict) and maybe:
+                return {str(k): str(v) for k, v in maybe.items()}
+    except Exception:
+        pass
+    # 2) Heuristic fallback
+    try:
+        for c in df.columns:
+            s = df[c]
+            nnull = int(s.isna().sum())
+            nunq = int(s.nunique(dropna=True))
+            dtype = str(s.dtype)
+            ratio_missing = f"{(nnull/len(df))*100:.1f}%" if len(df) else "0%"
+            if s.dtype.kind in ("i","u","f"):
+                base = "Cecha numeryczna"
+                if nunq <= max(2, int(len(s) ** 0.5)):
+                    base += " (niewiele unikatów — możliwa kategoria zakodowana liczbowo)"
+            elif s.dtype.kind in ("b",):
+                base = "Cecha binarna (True/False)"
+            elif s.dtype.kind in ("O","U","S"):
+                base = "Cecha kategoryczna/tekstowa"
+            elif "datetime" in dtype:
+                base = "Cecha czasowa / data"
+            else:
+                base = f"Typ {dtype}"
+            desc[c] = f"{base}. Unikatów: {nunq}. Braki: {ratio_missing}."
+    except Exception:
+        pass
+    return desc
+
+def ensure_auto_ai_col_desc(force: bool = False) -> None:
+    df = st.session_state.get("df")
+    if not isinstance(df, pd.DataFrame) or df is None or getattr(df, "empty", False):
+        return
+    sig = _df_signature(df)
+    if force or st.session_state.get("_ai_desc_sig") != sig:
+        try:
+            desc = _compute_ai_col_desc(df)
+            if isinstance(desc, dict) and desc:
+                st.session_state["ai_col_desc"] = desc
+                st.session_state["_ai_desc_sig"] = sig
+                st.session_state["ai_desc_count"] = len(desc)
+                try:
+                    st.toast("🔁 Zaktualizowano opisy kolumn (AI)", icon="✨")
+                except Exception:
+                    pass
+        except Exception:
+            # nie przerywamy aplikacji
+            pass
+
+
+# convenience binding
+UIComponents.ensure_auto_ai_col_desc = staticmethod(ensure_auto_ai_col_desc)

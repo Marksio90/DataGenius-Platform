@@ -152,7 +152,6 @@ class MainApp:
     # =========================================================================
 
     MAX_SESSION_DF_SIZE_MB = 200  # Maksymalny rozmiar DataFrame w pamięci
-
     def _check_dataframe_memory(self, df: pd.DataFrame) -> Tuple[bool, float]:
         """Sprawdź czy DataFrame nie jest za duży"""
         size_mb = df.memory_usage(deep=True).sum() / (1024**2)

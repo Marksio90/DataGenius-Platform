@@ -1,3 +1,43 @@
+# =========================
+# Streamlit app config
+# =========================
 [theme]
-base = "dark"
-primaryColor = "#8A2BE2"
+base = "dark"                          # "dark" | "light"
+primaryColor = "#8A2BE2"               # akcent TMIV
+backgroundColor = "#0E0F13"            # tło główne
+secondaryBackgroundColor = "#16181D"   # panele/karty
+textColor = "#EAEAF2"                  # domyślny kolor tekstu
+font = "sans serif"                    # "sans serif" | "serif" | "monospace"
+
+[browser]
+gatherUsageStats = false               # wyłącza telemetrykę do Streamlit
+serverAddress = "localhost"
+serverPort = 8501
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+address = "0.0.0.0"
+port = 8501
+# fileWatcherType = "auto"
+
+[client]
+toolbarMode = "minimal"                # "auto" | "viewer" | "minimal"
+showErrorDetails = true
+
+[runner]
+magicEnabled = false                   # wyłącza "magic commands"
+fastReruns = true
+
+[logger]
+level = "info"
+
+# Opcjonalne: jeśli wolisz jaśniejszy wariant – skopiuj blok poniżej i odkomentuj
+# [theme]
+# base = "light"
+# primaryColor = "#5B21B6"
+# backgroundColor = "#FFFFFF"
+# secondaryBackgroundColor = "#F6F7FB"
+# textColor = "#0F1222"
+# font = "sans serif"

@@ -1,1 +1,157 @@
-/* skeleton stylesheet */
+/* ==============================
+   TMIV – Streamlit stylesheet
+   ============================== */
+
+/* --- Design tokens --- */
+:root {
+  --tmiv-accent: #8A2BE2;           /* spójne z .streamlit/config.toml */
+  --tmiv-bg: #0e1117;               /* tło aplikacji (dark) */
+  --tmiv-surface: #151a24;          /* panele/karty */
+  --tmiv-text: #e5e7eb;             /* tekst główny */
+  --tmiv-muted: #9aa0a6;            /* tekst pomocniczy */
+  --tmiv-border: #2b3240;           /* obramowania */
+  --tmiv-shadow: 0 8px 24px rgba(0,0,0,.28);
+  --tmiv-radius: 14px;
+  --tmiv-radius-sm: 10px;
+  --tmiv-gap: 14px;
+}
+
+/* --- Global layout --- */
+html, body, .block-container {
+  background: var(--tmiv-bg) !important;
+  color: var(--tmiv-text) !important;
+}
+.block-container {
+  padding-top: 1.2rem;
+  padding-bottom: 2.0rem;
+  max-width: 1400px;
+}
+
+/* --- Typography --- */
+h1, h2, h3 {
+  letter-spacing: .2px;
+  margin-top: .2rem;
+}
+h1 { font-weight: 700; }
+h2 { font-weight: 650; }
+h3 { font-weight: 600; }
+p, li, code, pre, .stMarkdown {
+  color: var(--tmiv-text) !important;
+}
+
+/* --- Links --- */
+a, .stMarkdown a {
+  color: var(--tmiv-accent) !important;
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* --- Cards / panels (utility class for custom containers) --- */
+.tmiv-card {
+  background: var(--tmiv-surface);
+  border: 1px solid var(--tmiv-border);
+  border-radius: var(--tmiv-radius);
+  box-shadow: var(--tmiv-shadow);
+  padding: 16px 18px;
+}
+
+/* --- Buttons --- */
+.stButton > button, .stDownloadButton > button {
+  background: var(--tmiv-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--tmiv-radius-sm);
+  padding: .55rem .9rem;
+  transition: transform .06s ease, filter .15s ease;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+.stButton > button:active, .stDownloadButton > button:active {
+  transform: translateY(0);
+}
+
+/* --- Inputs (text, number, select, multiselect) --- */
+.stTextInput > div > div > input,
+.stNumberInput input,
+.stSelectbox > div div[data-baseweb="select"] > div,
+.stMultiSelect > div div[data-baseweb="select"] > div,
+textarea {
+  background: var(--tmiv-surface) !important;
+  color: var(--tmiv-text) !important;
+  border: 1px solid var(--tmiv-border) !important;
+  border-radius: var(--tmiv-radius-sm) !important;
+}
+.stSelectbox [data-testid="stMarkdownContainer"],
+.stMultiSelect [data-testid="stMarkdownContainer"] {
+  color: var(--tmiv-muted) !important;
+}
+
+/* --- Slider --- */
+.stSlider > div > div > div[data-baseweb="slider"] > div {
+  background: var(--tmiv-border) !important;
+}
+.stSlider [role="slider"] {
+  background: var(--tmiv-accent) !important;
+}
+
+/* --- Expander --- */
+.stExpander {
+  border: 1px solid var(--tmiv-border);
+  border-radius: var(--tmiv-radius);
+  background: var(--tmiv-surface);
+}
+.stExpander > div[aria-expanded] {
+  border-radius: var(--tmiv-radius);
+}
+
+/* --- DataFrame / Tables --- */
+[data-testid="stDataFrame"] {
+  border: 1px solid var(--tmiv-border);
+  border-radius: var(--tmiv-radius);
+  overflow: hidden;
+}
+[data-testid="stDataFrame"] table {
+  font-size: 0.92rem;
+}
+[data-testid="stDataFrame"] thead tr th {
+  background: #1b2130 !important;
+  color: var(--tmiv-text) !important;
+  border-bottom: 1px solid var(--tmiv-border) !important;
+}
+[data-testid="stDataFrame"] tbody tr:hover {
+  background: rgba(138,43,226,.06) !important;
+}
+
+/* --- Metrics --- */
+[data-testid="stMetric"] {
+  background: var(--tmiv-surface);
+  border: 1px solid var(--tmiv-border);
+  border-radius: var(--tmiv-radius);
+  padding: 12px 14px;
+}
+[data-testid="stMetric"] label, [data-testid="stMetric"] span {
+  color: var(--tmiv-text) !important;
+}
+
+/* --- Images --- */
+img {
+  border-radius: 12px;
+}
+
+/* --- Alerts --- */
+.stAlert {
+  border-radius: var(--tmiv-radius);
+  border: 1px solid var(--tmiv-border);
+}
+
+/* --- Small utilities --- */
+.muted { color: var(--tmiv-muted) !important; }
+.small { font-size: 0.9rem; }
+.spacer { height: 12px; }
+
+/* --- Hide Streamlit chrome (optional) --- */
+/* #MainMenu { visibility: hidden; }
+header [data-testid="stToolbar"] { display: none; }
+footer { visibility: hidden; } */

@@ -1,1 +1,0 @@
-Umieść tu makiety UX/UI (PNG/SVG).

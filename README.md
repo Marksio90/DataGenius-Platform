@@ -1,109 +1,157 @@
-# 📊 TMIV – The Most Important Variables
+# =============================================================================
+# THE MOST IMPORTANT VARIABLES - ENHANCED REQUIREMENTS
+# Marksio AI Solutions - Advanced ML Platform v2.0 Pro
+# =============================================================================
 
-**TMIV** (The Most Important Variables) to uniwersalna aplikacja w **Streamlit**,  
-która automatycznie analizuje dane, wybiera najważniejsze cechy i trenuje modele ML w trybie „one-click”.  
+# Core ML and Data Science - ENHANCED
+streamlit>=1.28.0
+pandas>=2.1.0
+numpy>=1.24.0
+scikit-learn>=1.3.2
+scipy>=1.11.0
 
-Dzięki prostemu interfejsowi i zintegrowanym modułom **EDA + ML** możesz szybko sprawdzić, które zmienne mają największy wpływ na wynik – bez konieczności ręcznego kodowania.
+# Advanced ML Algorithms - CUTTING EDGE
+xgboost>=2.0.0              # Extreme Gradient Boosting
+lightgbm>=4.0.0             # Light Gradient Boosting
+catboost>=1.2.0             # Categorical Boosting
+optuna>=3.4.0               # Hyperparameter optimization
 
----
+# Visualization - ENHANCED
+plotly>=5.17.0              # Interactive plots
+seaborn>=0.12.2             # Statistical visualization  
+matplotlib>=3.7.2           # Base plotting
+kaleido>=0.2.1              # Static image export for Plotly
 
-## 🚀 Szybki start
+# Configuration and Settings - ROBUST
+pydantic>=2.4.0             # Data validation
+pydantic-settings>=2.0.3    # Settings management
+python-dotenv>=1.0.0        # Environment variables
+PyYAML>=6.0.1               # YAML configuration support
 
-```bash
-# Utwórz środowisko
-mamba env create -f environment.yml
-# lub:
-conda env create -f environment.yml
+# Database Support - PRODUCTION READY
+sqlalchemy>=2.0.21          # ORM
+psycopg2-binary>=2.9.7      # PostgreSQL adapter
+alembic>=1.12.0             # Database migrations
 
-# Aktywuj środowisko
-mamba activate tmiv_app
+# Advanced Data Processing - PERFORMANCE
+polars>=0.19.0              # Fast DataFrame library (alternative to pandas)
+pyarrow>=13.0.0             # Columnar data format
+fastparquet>=0.8.3          # Fast Parquet reader
+openpyxl>=3.1.2             # Excel support
+xlrd>=2.0.1                 # Excel reading
+h5py>=3.9.0                 # HDF5 support
+tables>=3.8.0               # PyTables for HDF5
 
-# Uruchom aplikację
-streamlit run app.py
-👉 Jeśli chcesz aktywować funkcje LLM (np. automatyczne opisy kolumn, rekomendacje):
-utwórz plik config/.env na bazie config/env.template i uzupełnij OPENAI_API_KEY.
+# Statistical Analysis - ADVANCED
+statsmodels>=0.14.0         # Statistical modeling
+pingouin>=0.5.3             # Statistical tests
+factor_analyzer>=0.4.1      # Factor analysis
+yellowbrick>=1.5            # ML visualization
 
-📂 Struktura projektu
-bash
-Skopiuj kod
-hackathon-project/
-├── app.py                # Główny plik aplikacji Streamlit
-├── environment.yml       # Definicja środowiska (Conda/Mamba)
-├── requirements.txt      # Lista dodatkowych zależności (pip)
-│
-├── config/               # Ustawienia i zmienne środowiskowe
-│   ├── .env              # Dane wrażliwe (lokalnie)
-│   ├── env.template      # Szablon do uzupełnienia
-│   └── settings.py       # Konfiguracja (Pydantic Settings)
-│
-├── backend/              # Integracje (EDA/ML, upload plików)
-├── frontend/             # Komponenty UI
-├── ml/                   # Funkcje ML, pipeline’y
-├── db/                   # Schema i narzędzia SQLite
-├── data/                 # Dane przykładowe (np. avocado.csv)
-│
-├── eda/                  # Notebooki EDA
-├── docs/                 # Dokumentacja projektu
-└── qa/tests/             # Testy jednostkowe (pytest)
-🏗️ Architektura aplikacji
-text
-Skopiuj kod
-                ┌───────────────────────┐
-                │       Frontend        │
-                │  (Streamlit UI/UX)    │
-                └──────────┬────────────┘
-                           │
-                           ▼
-                ┌───────────────────────┐
-                │       Backend         │
-                │  (EDA + ML logic)     │
-                └──────────┬────────────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        ▼                  ▼                  ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   SQLite    │    │   Models    │    │   OpenAI /  │
-│   (db/)     │    │ (ml/)       │    │   Heurystyki│
-└─────────────┘    └─────────────┘    └─────────────┘
-✨ Funkcje aplikacji
-📂 Wczytywanie danych: CSV, JSON, Parquet lub przykładowy dataset avocado
+# Feature Engineering - AUTOMATED
+feature-engine>=1.6.0       # Feature engineering
+category_encoders>=2.6.0    # Advanced encoding
+imbalanced-learn>=0.11.0    # Handling imbalanced data
+boruta>=0.3                 # Feature selection
 
-🔎 Analiza kolumn: heurystyki lub LLM (jeśli dostępny klucz API)
+# Time Series Analysis - SPECIALIZED
+prophet>=1.1.4              # Facebook Prophet
+sktime>=0.24.0              # Time series ML
+tsfresh>=0.20.0             # Time series feature extraction
 
-🎯 Automatyczny wybór targetu
+# Model Interpretation - EXPLAINABLE AI  
+shap>=0.43.0                # SHAP values
+lime>=0.2.0.1               # LIME explanations
+eli5>=0.13.0                # Model interpretation
+yellowbrick>=1.5            # ML model visualization
 
-🤖 Autodetekcja problemu: regresja lub klasyfikacja
+# Testing - COMPREHENSIVE
+pytest>=7.4.2              # Testing framework
+pytest-cov>=4.1.0          # Coverage reports
+hypothesis>=6.87.0          # Property-based testing
+great-expectations>=0.17.0  # Data validation
 
-🏋️‍♂️ Trening modeli: scikit-learn (lekki, szybki), opcjonalnie PyCaret
+# Development Tools - PROFESSIONAL
+black>=23.9.1               # Code formatting
+isort>=5.12.0               # Import sorting
+flake8>=6.1.0               # Linting
+mypy>=1.6.0                 # Type checking
+pre-commit>=3.4.0           # Git hooks
+nest-asyncio>=1.5.0
+keyring>=25.0.0
+cryptography>=41.0.4
+structlog>=23.2.0
+psutil>=5.9.5
+prometheus-client>=0.18.0
 
-📊 Wizualizacje: ranking cech, metryki jakości modelu
+# Performance Monitoring - PRODUCTION
+memory-profiler>=0.61.0     # Memory usage monitoring
+line-profiler>=4.1.1        # Line-by-line profiling
+py-spy>=0.3.14              # Python profiler
+psutil>=5.9.5               # System monitoring
 
-💡 Rekomendacje ulepszeń
+# Security - ENTERPRISE
+cryptography>=41.0.4        # Encryption
+keyring>=24.2.0             # Secure credential storage
+python-jose>=3.3.0          # JWT tokens
 
-🗂️ Historia uruchomień zapisywana w SQLite
+# API & Web Services - INTEGRATION
+requests>=2.31.0            # HTTP requests
+httpx>=0.25.0               # Async HTTP client
+fastapi>=0.104.0            # API framework (future feature)
+uvicorn>=0.24.0             # ASGI server
+websockets>=11.0.3          # WebSocket support
 
-🖼️ Przykładowy widok aplikacji
-yaml
-Skopiuj kod
-┌───────────────────────────────────────────────┐
-│  📊 TMIV – Analiza cech                      │
-├───────────────────────────────────────────────┤
-│ [Upload CSV]  [Przykładowe dane: avocado.csv] │
-│                                               │
-│ 🎯 Target:  AveragePrice                      │
-│ 🔎 Problem:  Regression                       │
-│                                               │
-│ 📊 Najważniejsze cechy:                       │
-│   1. Total Volume     ████████████  0.87      │
-│   2. Year             ████████      0.65      │
-│   3. 4046             ██████        0.42      │
-│                                               │
-│ 🏆 Wyniki: RMSE=0.29, R²=0.91                 │
-└───────────────────────────────────────────────┘
-⚙️ Uwaga nt. PyCaret
-Ze względu na rozmiar zależności PyCaret jest opcjonalny.
-Aplikacja działa w pełni w trybie scikit-learn, natomiast dla chętnych dostarczony jest pokazowy notebook:
+# AI/LLM Integration - NEXT-GEN
+openai>=1.0.0               # OpenAI GPT API
+anthropic>=0.5.0            # Anthropic Claude API
+langchain>=0.0.330          # LLM framework
+tiktoken>=0.5.1             # Token counting for GPT
 
-bash
-Skopiuj kod
-ml/ml_training.ipynb
+# Cloud & Storage - SCALABLE
+boto3>=1.29.0               # AWS SDK
+azure-storage-blob>=12.19.0 # Azure Blob storage
+google-cloud-storage>=2.10.0 # Google Cloud storage
+minio>=7.1.17               # MinIO object storage
+
+# Utilities - PRODUCTIVITY
+tqdm>=4.66.1                # Progress bars
+rich>=13.6.0                # Rich text/progress
+click>=8.1.7                # CLI framework
+typer>=0.9.0                # Modern CLI framework
+loguru>=0.7.2               # Advanced logging
+schedule>=1.2.0             # Job scheduling
+
+# Jupyter Integration - NOTEBOOK SUPPORT
+notebook>=7.0.0             # Jupyter Notebook
+jupyterlab>=4.0.0           # JupyterLab
+ipywidgets>=8.1.0           # Interactive widgets
+nbformat>=5.9.0             # Notebook format
+
+# Deployment - CONTAINERIZATION
+gunicorn>=21.2.0            # WSGI server
+docker>=6.1.0               # Docker SDK
+kubernetes>=28.1.0          # Kubernetes API
+
+# Monitoring & Observability - DEVOPS
+prometheus-client>=0.18.0   # Metrics collection
+sentry-sdk>=1.38.0          # Error tracking
+structlog>=23.2.0           # Structured logging
+
+# OPTIONAL - Advanced Features (install separately if needed)
+tensorflow>=2.14.0         # Deep Learning
+torch>=2.1.0               # PyTorch
+transformers>=4.35.0       # Hugging Face transformers
+opencv-python>=4.8.0       # Computer Vision
+
+# Development Dependencies (only for development)
+# jupyter-black>=0.3.4       # Black formatter for Jupyter
+# nbstripout>=0.6.1          # Clean notebook outputs
+# pre-commit>=3.4.0          # Git hooks
+# optional HTML->PDF
+pdfkit>=1.0
+reportlab>=4.0.6           # PDF generation (used in reporting)
+joblib>=1.3.2              # Explicit – used across the codebase
+importlib-metadata>=6.8.0  # Some modules rely on it explicitly
+skl2onnx>=1.16.0           # Optional export path present in code
+sklearn2pmml>=0.104.0      # Optional PMML export present in code

@@ -1,4 +1,34 @@
+# --- Core UI & ML ---
 streamlit>=1.37
 pandas>=2.2
 numpy>=1.26
 scikit-learn>=1.5
+
+# --- Wykresy / obrazy ---
+matplotlib>=3.8
+pillow>=10
+
+# --- I/O formaty ---
+pyarrow>=16      # Parquet/Arrow
+openpyxl>=3.1    # XLSX import
+
+# --- Cache / raporty ---
+diskcache>=5.6
+reportlab>=4.0   # PDF Explainability
+
+# --- Konfiguracja (Settings) ---
+pydantic-settings>=2.4
+
+# --- (OPCJONALNE) Explainability / Profiling ---
+# shap>=0.45
+# ydata-profiling>=4.8
+
+# --- (OPCJONALNE) Boostowane modele ---
+# xgboost>=2.0
+# lightgbm>=4.3
+# catboost>=1.2
+
+# --- (OPCJONALNE) Telemetria / DB ---
+# opentelemetry-sdk>=1.25
+# duckdb>=1.0
+# psycopg[binary]>=3.2

@@ -13,6 +13,7 @@ import streamlit as st
 
 from backend.ai_integration import get_ai_integration
 from backend.auto_prep import auto_preprocess
+from backend.api.v3_endpoints import router as v3_router
 from backend.cache_manager import get_cache_manager
 from backend.dtype_sanitizer import sanitize_dataframe
 from backend.eda_integration import perform_eda
@@ -728,8 +729,13 @@ def main():
 
     # Monitoring (ukryty panel)
     with st.sidebar.expander("🔧 Monitoring & Admin", expanded=False):
-        display_monitoring_panel()
-
+        try:
+            display_monitoring_panel()
+        except Exception as e:
+            st.error(f"Błąd panelu monitoringu: {e}")
+            st.text("Stack trace:")
+            import traceback
+            st.code(traceback.format_exc())
 
 if __name__ == "__main__":
     main()

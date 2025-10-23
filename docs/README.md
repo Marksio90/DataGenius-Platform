@@ -1,226 +1,289 @@
-# TMIV - The Most Important Variables
-## Advanced ML Platform v2.0 Pro 🤖
+# 🚀 TMIV v3.0 ULTRA PRO
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/streamlit-1.37+-red.svg)](https://streamlit.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**The Most Intelligent Visualizer** - Production-Grade AutoML Platform
 
-**Auto Data Scientist** - Automatyczna analiza danych i trenowanie modeli ML z zaawansowaną interpretowalnością.
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-3.0.0-orange.svg)](CHANGELOG.md)
 
-![TMIV Screenshot](docs/ux_mockups/screenshot_main.png)
+## 🎯 What's New in v3.0
+
+### 🧠 Neural Networks
+- **PyTorch & TensorFlow** integration
+- **AutoML Neural** - automatic architecture search
+- Early stopping, learning rate scheduling
+- TensorBoard logging
+
+### ⚡ Hyperparameter Optimization
+- **Optuna** (TPE + Pruning)
+- **Genetic Algorithm**
+- **Bayesian Optimization**
+- Multi-objective optimization
+
+### 📈 Time Series Forecasting
+- **Prophet** (Facebook)
+- **ARIMA/SARIMA** with auto selection
+- **LSTM** deep learning
+- Confidence intervals & diagnostics
+
+### 🔄 MLOps
+- **MLflow** experiment tracking
+- **Drift Detection** (KS test, PSI, concept drift)
+- **Model Registry** with versioning
+- **Auto Retrainer** with triggers
+
+### 🎨 Feature Engineering
+- **Auto Feature Generator** (polynomial, interactions, datetime)
+- **Feature Selector** (variance, correlation, MI, RFE)
+- **Feature Store** with versioning
+
+### 🔍 Explainability
+- **SHAP** values & visualizations
+- **LIME** local explanations
+- **What-If Analysis** (counterfactuals)
+- **Fairness Checker** (bias detection)
 
 ---
 
-## ✨ Kluczowe Funkcjonalności
+## 📦 Installation
 
-🚀 **Auto ML Pipeline**
-- Automatyczna detekcja typu problemu (klasyfikacja/regresja)
-- Inteligentny preprocessing i sanityzacja danych
-- Trenowanie 10+ modeli równolegle
+### Prerequisites
+```bash
+Python 3.9+
+Node.js 16+
+```
 
-📊 **Advanced EDA**
-- Statystyki opisowe
-- Macierz korelacji
-- Opisy kolumn powered by AI (OpenAI/Anthropic)
+### Quick Install
+```bash
+# Clone repository
+git clone https://github.com/your-org/tmiv.git
+cd tmiv
 
-🤖 **Multi-Model Training**
-- Sklearn: Logistic, Random Forest, Gradient Boosting
-- XGBoost, LightGBM, CatBoost
-- Asynchroniczne wykonanie z progress tracking
+# Backend
+cd backend
+pip install -r requirements.txt
 
-📈 **Explainability**
-- Feature importance (agregowane z wielu modeli)
-- ROC/PR curves, Confusion Matrix
-- Calibration curves
-- Residual plots (regresja)
+# Frontend
+cd ../frontend
+npm install
+```
 
-💡 **AI Recommendations**
-- Rekomendacje biznesowe
-- Interpretacja wyników
-- Fallback deterministyczny (działa bez kluczy API)
+### Full Install (with all features)
+```bash
+# Backend with all ML libraries
+pip install -r requirements-full.txt
 
-📦 **Production Ready**
-- Eksport modeli (.joblib)
-- Raporty PDF (ReportLab)
-- Docker support
-- CI/CD (GitHub Actions)
+# Includes:
+# - PyTorch (CUDA 11.8)
+# - TensorFlow
+# - Prophet
+# - SHAP
+# - Optuna
+# - MLflow
+```
 
 ---
 
 ## 🚀 Quick Start
 
-### Instalacja (Mamba/Conda)
+### 1. Start Backend
 ```bash
-# Klonuj repo
-git clone https://github.com/your-org/tmiv.git
-cd tmiv
-
-# Utwórz środowisko
-mamba env create -f environment.yml
-mamba activate tmiv
-
-# Uruchom aplikację
-streamlit run app.py
+cd backend
+uvicorn main:app --reload --port 8000
 ```
 
-### Instalacja (pip)
+### 2. Start Frontend
 ```bash
-# Klonuj repo
-git clone https://github.com/your-org/tmiv.git
-cd tmiv
-
-# Utwórz venv
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-
-# Zainstaluj zależności
-pip install -r requirements.txt
-
-# Uruchom
-streamlit run app.py
+cd frontend
+npm start
 ```
 
-### Docker
+### 3. Open Browser
+```
+http://localhost:3000
+```
+
+---
+
+## 💡 Usage Examples
+
+### Neural Network Training
+```python
+from backend.neural_nets.pytorch_trainer import PyTorchTrainer
+
+trainer = PyTorchTrainer(
+    problem_type='binary_classification',
+    hidden_sizes=[128, 64, 32],
+    max_epochs=100
+)
+
+trainer.fit(X_train, y_train)
+predictions = trainer.predict(X_test)
+```
+
+### Hyperparameter Optimization
+```python
+from backend.optimization.optuna_tuner import OptunaTuner
+from sklearn.ensemble import RandomForestClassifier
+
+tuner = OptunaTuner(
+    model_class=RandomForestClassifier,
+    n_trials=50
+)
+
+results = tuner.optimize(X, y)
+best_model = results['best_model']
+```
+
+### Time Series Forecasting
+```python
+from backend.timeseries.prophet_forecaster import ProphetForecaster
+
+forecaster = ProphetForecaster()
+forecaster.fit(df, date_col='ds', target_col='y')
+forecast = forecaster.predict(periods=30)
+```
+
+### Drift Detection
+```python
+from backend.mlops.drift_detector import DriftDetector
+
+detector = DriftDetector(reference_data=X_train)
+report = detector.full_drift_report(model, X_new, y_new)
+
+if report['overall_drift_detected']:
+    print("⚠️ DRIFT DETECTED - Retrain recommended!")
+```
+
+### Model Explainability
+```python
+from backend.explainability.shap_explainer import SHAPExplainer
+
+explainer = SHAPExplainer(model, X_train.sample(100))
+shap_values = explainer.explain(X_test)
+
+# Feature importance
+importance = explainer.get_feature_importance(X_test)
+
+# Visualizations
+explainer.plot_summary(X_test)
+explainer.plot_waterfall(X_test, sample_idx=0)
+```
+
+---
+
+## 📖 Documentation
+
+- **[Complete Features Guide](docs/V3_FEATURES.md)** - All v3.0 features
+- **[API Reference](docs/API.md)** - REST API documentation
+- **[Tutorials](docs/tutorials/)** - Step-by-step guides
+- **[Architecture](docs/ARCHITECTURE.md)** - System design
+
+---
+
+## 🧪 Testing
 ```bash
-# Build
-docker-compose build
+# Run all tests
+pytest
 
-# Uruchom
-docker-compose up
+# Run specific module
+pytest tests/test_neural_nets.py
 
-# Aplikacja dostępna na http://localhost:8501
+# With coverage
+pytest --cov=backend tests/
 ```
 
 ---
 
-## 📖 Użycie
+## 🎯 Key Features
 
-### Krok 1: Wczytaj Dane
+### ✅ Data Processing
+- CSV, Excel, JSON support
+- Automatic type detection
+- Missing value handling
+- Outlier detection
 
-Przejdź do zakładki **"📊 Analiza Danych"** i wgraj plik:
-- CSV, Excel, Parquet lub JSON
-- Przykład: `data/avocado.csv`
+### ✅ Visualization
+- 15+ chart types
+- Interactive plots (Plotly)
+- Correlation heatmaps
+- Distribution analysis
 
-### Krok 2: EDA
+### ✅ Machine Learning
+- 20+ algorithms
+- AutoML pipeline
+- Ensemble methods
+- Deep learning (PyTorch, TensorFlow)
 
-Kliknij **"Uruchom EDA"** aby zobaczyć:
-- Statystyki opisowe
-- Rozkłady i korelacje
-- Opisy kolumn (AI)
+### ✅ Model Evaluation
+- Comprehensive metrics
+- Cross-validation
+- ROC curves, confusion matrix
+- Learning curves
 
-### Krok 3: Trening
-
-W zakładce **"🤖 Trening Modelu"**:
-1. Wybierz kolumnę target (auto-wykrywana)
-2. Wybierz strategię (`balanced` zalecane)
-3. Kliknij **"Rozpocznij Trening"**
-
-### Krok 4: Wyniki
-
-Zakładka **"📈 Wyniki i Wizualizacje"**:
-- Ranking modeli
-- Porównanie metryk (tabela + radar)
-- Feature importance
-- Wykresy (ROC, CM, etc.)
-
-### Krok 5: Eksport
-
-Zakładka **"💡 Rekomendacje"**:
-- 📥 Pobierz ZIP (modele + artefakty)
-- 📄 Pobierz PDF (raport)
+### ✅ Production Ready
+- MLflow experiment tracking
+- Model registry & versioning
+- Drift detection
+- Auto retraining
 
 ---
 
-## 🏗️ Architektura
+## 🏗️ Architecture
 ```
-┌─────────────┐
-│   app.py    │  Streamlit UI
-└──────┬──────┘
-       │
-       ├─► frontend/      UI Components
-       │   ├─ ui_components.py
-       │   ├─ ui_panels.py
-       │   └─ ui_compare.py
-       │
-       └─► backend/       Business Logic
-           ├─ file_upload.py
-           ├─ dtype_sanitizer.py
-           ├─ eda_integration.py
-           ├─ ml_integration.py
-           ├─ async_ml_trainer.py
-           ├─ plots.py
-           ├─ export_everything.py
-           └─ ai_integration.py
+TMIV v3.0
+├── backend/
+│   ├── neural_nets/          # PyTorch, TensorFlow, AutoML
+│   ├── optimization/          # Optuna, Genetic, Bayesian
+│   ├── timeseries/            # Prophet, ARIMA, LSTM
+│   ├── mlops/                 # MLflow, Drift, Registry
+│   ├── feature_engineering/   # Auto Features, Selector, Store
+│   ├── explainability/        # SHAP, LIME, What-If, Fairness
+│   ├── api/                   # FastAPI endpoints
+│   └── models/                # ML model wrappers
+└── frontend/
+    ├── components/            # React components
+    ├── pages/                 # Application pages
+    └── utils/                 # Utilities
 ```
 
 ---
 
-## 🧪 Testy
-```bash
-# Uruchom wszystkie testy
-pytest qa/tests/ -v
+## 🤝 Contributing
 
-# Z coverage
-pytest qa/tests/ --cov=backend --cov-report=html
-
-# Smoke testy
-pytest qa/tests/test_pipeline_smoke.py -v
-
-# Testy kontraktów
-pytest qa/tests/test_api_contracts.py -v
-```
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 📚 Dokumentacja
+## 📜 License
 
-Pełna dokumentacja: [docs/README.md](docs/README.md)
-
-- [Instalacja](docs/README.md#instalacja)
-- [Użycie](docs/README.md#użycie)
-- [Architektura](docs/README.md#architektura)
-- [Moduły](docs/README.md#moduły)
-- [Rozwój](docs/README.md#rozwój)
-- [FAQ](docs/README.md#faq)
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🤝 Wkład
+## 🌟 Star History
 
-Contributions welcome! Zobacz [CONTRIBUTING.md](CONTRIBUTING.md).
-
-1. Fork repo
-2. Utwórz branch (`git checkout -b feature/AmazingFeature`)
-3. Commit (`git commit -m 'Add AmazingFeature'`)
-4. Push (`git push origin feature/AmazingFeature`)
-5. Otwórz Pull Request
+[![Star History Chart](https://api.star-history.com/svg?repos=your-org/tmiv&type=Date)](https://star-history.com/#your-org/tmiv&Date)
 
 ---
 
-## 📄 Licencja
+## 📧 Contact
 
-MIT License - zobacz [LICENSE](LICENSE)
+- **Email**: support@tmiv.ai
+- **Discord**: [Join our community](https://discord.gg/tmiv)
+- **Twitter**: [@TMIV_AI](https://twitter.com/TMIV_AI)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Streamlit** - Amazing UI framework
-- **Scikit-learn** - ML foundation
-- **XGBoost, LightGBM, CatBoost** - Gradient boosting
-- **ReportLab** - PDF generation
-- Open Source Community ❤️
+Built with:
+- PyTorch, TensorFlow
+- SHAP, LIME
+- Prophet, Optuna
+- MLflow
+- FastAPI, React
 
 ---
 
-## 📞 Kontakt
-
-- **Email:** support@tmiv.ai
-- **GitHub:** https://github.com/your-org/tmiv
-- **Issues:** https://github.com/your-org/tmiv/issues
-
----
-
-**Made with ❤️ for Data Scientists**
-
-⭐ Star us on GitHub if you find this useful!
+**Made with ❤️ by the TMIV Team**

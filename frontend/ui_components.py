@@ -39,36 +39,59 @@ def render_sidebar() -> Dict:
     config = {}
 
     # Sekcja: Klucze API
-    with st.sidebar.expander("🔑 Klucze API", expanded=False):
-        st.markdown("**OpenAI API Key**")
-        openai_key = st.text_input(
-            "OpenAI Key",
-            type="password",
-            value=settings.openai_api_key or "",
-            key="openai_key_input",
-            label_visibility="collapsed"
-        )
-        if openai_key:
-            config['openai_key'] = openai_key
-            if security.validate_api_key(openai_key, "openai"):
-                st.success("✅ Klucz OpenAI wygląda poprawnie")
-            else:
-                st.warning("⚠️ Klucz OpenAI może być niepoprawny")
+with st.sidebar.expander("🔑 Klucze API", expanded=False):
+    st.markdown("**OpenAI API Key**")
+    openai_key = st.text_input(
+        "OpenAI Key",
+        type="password",
+        value=settings.openai_api_key or "",
+        key="openai_key_input",
+        label_visibility="collapsed"
+    )
+    
+    # ZAPISZ klucz do session_state
+    if openai_key and openai_key != settings.openai_api_key:
+        st.session_state['openai_api_key'] = openai_key
+        # Aktualizuj settings
+        settings.openai_api_key = openai_key
+        
+    if openai_key:
+        config['openai_key'] = openai_key
+        if security.validate_api_key(openai_key, "openai"):
+            st.success("✅ Klucz OpenAI wygląda poprawnie")
+        else:
+            st.warning("⚠️ Klucz OpenAI może być niepoprawny")
 
-        st.markdown("**Anthropic API Key**")
-        anthropic_key = st.text_input(
-            "Anthropic Key",
-            type="password",
-            value=settings.anthropic_api_key or "",
-            key="anthropic_key_input",
-            label_visibility="collapsed"
-        )
-        if anthropic_key:
-            config['anthropic_key'] = anthropic_key
-            if security.validate_api_key(anthropic_key, "anthropic"):
-                st.success("✅ Klucz Anthropic wygląda poprawnie")
-            else:
-                st.warning("⚠️ Klucz Anthropic może być niepoprawny")
+    st.markdown("**Anthropic API Key**")
+    anthropic_key = st.text_input(
+        "Anthropic Key",
+        type="password",
+        value=settings.anthropic_api_key or "",
+        key="anthropic_key_input",
+        label_visibility="collapsed"
+    )
+    
+    # ZAPISZ klucz do session_state
+    if anthropic_key and anthropic_key != settings.anthropic_api_key:
+        st.session_state['anthropic_api_key'] = anthropic_key
+        # Aktualizuj settings
+        settings.anthropic_api_key = anthropic_key
+        
+    if anthropic_key:
+        config['anthropic_key'] = anthropic_key
+        if security.validate_api_key(anthropic_key, "anthropic"):
+            st.success("✅ Klucz Anthropic wygląda poprawnie")
+        else:
+            st.warning("⚠️ Klucz Anthropic może być niepoprawny")
+    
+    # Przycisk Apply
+    if st.button("💾 Zastosuj Klucze", use_container_width=True):
+        # Reinicjalizuj AI integration z nowymi kluczami
+        from backend.ai_integration import get_ai_integration
+        ai = get_ai_integration()
+        ai._init_clients()
+        st.success("✅ Klucze zaktualizowane!")
+        st.rerun()
 
     # Status providerów
     with st.sidebar.expander("📊 Status Providerów", expanded=True):

@@ -44,11 +44,27 @@ class AIIntegration:
 
     def _init_clients(self):
         """Inicjalizuje klientów API."""
+        import streamlit as st
+        
+        # Sprawdź w session_state najpierw
+        openai_key = None
+        anthropic_key = None
+        
+        if 'openai_api_key' in st.session_state:
+            openai_key = st.session_state['openai_api_key']
+        elif settings.openai_api_key:
+            openai_key = settings.openai_api_key
+        
+        if 'anthropic_api_key' in st.session_state:
+            anthropic_key = st.session_state['anthropic_api_key']
+        elif settings.anthropic_api_key:
+            anthropic_key = settings.anthropic_api_key
+        
         # OpenAI
-        if settings.has_openai_key():
+        if openai_key:
             try:
                 import openai
-                openai.api_key = settings.openai_api_key
+                openai.api_key = openai_key
                 self.openai_available = True
                 logger.info("OpenAI client zainicjalizowany")
             except ImportError:
@@ -57,11 +73,11 @@ class AIIntegration:
                 logger.warning(f"Błąd inicjalizacji OpenAI: {e}")
 
         # Anthropic
-        if settings.has_anthropic_key():
+        if anthropic_key:
             try:
                 import anthropic
                 self.anthropic_client = anthropic.Anthropic(
-                    api_key=settings.anthropic_api_key
+                    api_key=anthropic_key
                 )
                 self.anthropic_available = True
                 logger.info("Anthropic client zainicjalizowany")

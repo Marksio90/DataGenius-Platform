@@ -134,71 +134,85 @@ def get_performance_metrics() -> Dict:
 def display_monitoring_panel():
     """
     Wyświetla panel monitorowania w Streamlit.
-
-    Example:
-        >>> # W aplikacji Streamlit
-        >>> display_monitoring_panel()
     """
-    st.subheader("🔧 Panel Monitorowania")
+    try:
+        st.subheader("🔧 Panel Monitorowania")
+        
+        # System info
+        with st.expander("ℹ️ Informacje Systemowe", expanded=False):
+            try:
+                sys_info = get_system_info()
+                for key, value in sys_info.items():
+                    st.text(f"{key}: {value}")
+            except Exception as e:
+                st.error(f"Błąd pobierania info systemowych: {e}")
 
-    # System info
-    with st.expander("ℹ️ Informacje Systemowe", expanded=False):
-        sys_info = get_system_info()
-        for key, value in sys_info.items():
-            st.text(f"{key}: {value}")
+        # Health check
+        with st.expander("❤️ Stan Zdrowia Aplikacji", expanded=True):
+            try:
+                health = get_application_health()
 
-    # Health check
-    with st.expander("❤️ Stan Zdrowia Aplikacji", expanded=True):
-        health = get_application_health()
+                status_emoji = {
+                    "healthy": "✅",
+                    "degraded": "⚠️",
+                    "unhealthy": "❌",
+                }
 
-        status_emoji = {
-            "healthy": "✅",
-            "degraded": "⚠️",
-            "unhealthy": "❌",
-        }
+                st.markdown(f"### Status: {status_emoji.get(health['status'], '❓')} {health['status'].upper()}")
 
-        st.markdown(f"### Status: {status_emoji.get(health['status'], '❓')} {health['status'].upper()}")
+                # Checks
+                st.markdown("**Sprawdzenia:**")
+                for check, status in health.get("checks", {}).items():
+                    status_icon = "✅" if status == "OK" else "⚠️" if status == "WARNING" else "❌"
+                    st.text(f"{status_icon} {check}: {status}")
 
-        # Checks
-        st.markdown("**Sprawdzenia:**")
-        for check, status in health["checks"].items():
-            status_icon = "✅" if status == "OK" else "⚠️" if status == "WARNING" else "❌"
-            st.text(f"{status_icon} {check}: {status}")
+                # Warnings
+                if health.get("warnings"):
+                    st.markdown("**Ostrzeżenia:**")
+                    for warning in health["warnings"]:
+                        st.warning(warning)
 
-        # Warnings
-        if health["warnings"]:
-            st.markdown("**Ostrzeżenia:**")
-            for warning in health["warnings"]:
-                st.warning(warning)
+                # AI Providers
+                if "ai_providers" in health:
+                    st.markdown("**AI Providers:**")
+                    providers = health["ai_providers"]
+                    st.text(f"OpenAI: {'✅' if providers.get('openai') else '❌'}")
+                    st.text(f"Anthropic: {'✅' if providers.get('anthropic') else '❌'}")
+            except Exception as e:
+                st.error(f"Błąd health check: {e}")
 
-        # AI Providers
-        if "ai_providers" in health:
-            st.markdown("**AI Providers:**")
-            providers = health["ai_providers"]
-            st.text(f"OpenAI: {'✅' if providers['openai'] else '❌'}")
-            st.text(f"Anthropic: {'✅' if providers['anthropic'] else '❌'}")
+        # Performance metrics
+        with st.expander("📊 Metryki Wydajności", expanded=False):
+            try:
+                metrics = get_performance_metrics()
 
-    # Performance metrics
-    with st.expander("📊 Metryki Wydajności", expanded=False):
-        metrics = get_performance_metrics()
+                st.metric("Czas sesji", f"{metrics.get('session_duration_seconds', 0):.1f}s")
+                st.metric("Liczba operacji", metrics.get('total_operations', 0))
 
-        st.metric("Czas sesji", f"{metrics['session_duration_seconds']:.1f}s")
-        st.metric("Liczba operacji", metrics['total_operations'])
+                if metrics.get('execution_times'):
+                    st.markdown("**Czasy wykonania:**")
+                    exec_df = pd.DataFrame.from_dict(metrics['execution_times'], orient='index')
+                    st.dataframe(exec_df)
+            except Exception as e:
+                st.error(f"Błąd metryk: {e}")
 
-        if metrics['execution_times']:
-            st.markdown("**Czasy wykonania:**")
-            exec_df = pd.DataFrame.from_dict(metrics['execution_times'], orient='index')
-            st.dataframe(exec_df)
+        # Cache info
+        with st.expander("💾 Informacje o Cache", expanded=False):
+            try:
+                cache_manager = get_cache_manager()
+                cache_info = cache_manager.get_cache_info()
 
-    # Cache info
-    with st.expander("💾 Informacje o Cache", expanded=False):
-        cache_manager = get_cache_manager()
-        cache_info = cache_manager.get_cache_info()
+                st.metric("Rozmiar cache", f"{cache_info.get('size_mb', 0):.2f} MB")
+                st.metric("Liczba plików", cache_info.get('n_files', 0))
 
-        st.metric("Rozmiar cache", f"{cache_info['size_mb']:.2f} MB")
-        st.metric("Liczba plików", cache_info['n_files'])
-
-        if st.button("🗑️ Wyczyść Cache"):
-            count = cache_manager.clear_cache()
-            st.success(f"Usunięto {count} plików cache")
-            st.rerun()
+                if st.button("🗑️ Wyczyść Cache"):
+                    count = cache_manager.clear_cache()
+                    st.success(f"Usunięto {count} plików cache")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Błąd cache info: {e}")
+                
+    except Exception as e:
+        st.error(f"Krytyczny błąd panelu monitoringu: {e}")
+        import traceback
+        st.code(traceback.format_exc())

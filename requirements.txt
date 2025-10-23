@@ -20,15 +20,15 @@ reportlab>=4.0   # PDF Explainability
 pydantic-settings>=2.4
 
 # --- (OPCJONALNE) Explainability / Profiling ---
-# shap>=0.45
-# ydata-profiling>=4.8
+shap>=0.45
+ydata-profiling>=4.8
 
 # --- (OPCJONALNE) Boostowane modele ---
-# xgboost>=2.0
-# lightgbm>=4.3
-# catboost>=1.2
+xgboost>=2.0
+lightgbm>=4.3
+catboost>=1.2
 
 # --- (OPCJONALNE) Telemetria / DB ---
-# opentelemetry-sdk>=1.25
-# duckdb>=1.0
-# psycopg[binary]>=3.2
+opentelemetry-sdk>=1.25
+duckdb>=1.0
+psycopg[binary]>=3.2

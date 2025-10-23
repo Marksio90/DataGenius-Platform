@@ -1,43 +1,31 @@
-# =========================
-# Streamlit app config
-# =========================
+# .streamlit/config.toml
 [theme]
-base = "dark"                          # "dark" | "light"
-primaryColor = "#8A2BE2"               # akcent TMIV
-backgroundColor = "#0E0F13"            # tło główne
-secondaryBackgroundColor = "#16181D"   # panele/karty
-textColor = "#EAEAF2"                  # domyślny kolor tekstu
-font = "sans serif"                    # "sans serif" | "serif" | "monospace"
+base = "dark"
+primaryColor = "#8A2BE2"
+backgroundColor = "#0E0F13"
+secondaryBackgroundColor = "#16181D"
+textColor = "#EAEAF2"
+font = "sans serif"
 
 [browser]
-gatherUsageStats = false               # wyłącza telemetrykę do Streamlit
+gatherUsageStats = false
 serverAddress = "localhost"
 serverPort = 8501
 
 [server]
-headless = true
-enableCORS = true
+headless = false
+enableCORS = true              # <-- nie wyłączaj przy włączonym XSRF
 enableXsrfProtection = true
-address = "0.0.0.0"
+address = "localhost"          # <-- zamiast "0.0.0.0" dla auto-open lokalnie
 port = 8501
-# fileWatcherType = "auto"
 
 [client]
-toolbarMode = "minimal"                # "auto" | "viewer" | "minimal"
+toolbarMode = "minimal"
 showErrorDetails = true
 
 [runner]
-magicEnabled = false                   # wyłącza "magic commands"
+magicEnabled = false
 fastReruns = true
 
 [logger]
 level = "info"
-
-# Opcjonalne: jeśli wolisz jaśniejszy wariant – skopiuj blok poniżej i odkomentuj
-# [theme]
-# base = "light"
-# primaryColor = "#5B21B6"
-# backgroundColor = "#FFFFFF"
-# secondaryBackgroundColor = "#F6F7FB"
-# textColor = "#0F1222"
-# font = "sans serif"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 TMIV v3.0 ULTRA PRO - Complete Startup Script
-Cross-platform Python version
+Cross-platform Python version with Windows fixes
 
 Usage:
     python start.py
@@ -46,15 +46,19 @@ def print_banner():
 
 def check_directory():
     """Check if we're in the right directory"""
-    if not Path("backend/main.py").exists():
+    if not Path("backend/app.py").exists():
         print(f"{Colors.RED}❌ Error: Please run this script from the project root directory{Colors.NC}")
         print("   (where backend/ folder is located)")
+        print(f"   Current directory: {Path.cwd()}")
         sys.exit(1)
 
 def check_health(url="http://localhost:8000/health", timeout=30):
     """Check if backend is healthy"""
-    import urllib.request
-    import json
+    try:
+        import urllib.request
+        import json
+    except ImportError:
+        return False
     
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -73,22 +77,25 @@ def start_backend():
     print("   Port: 8000")
     print("   Docs: http://localhost:8000/docs")
     
+    # Use uvicorn directly - more reliable!
     if sys.platform == 'win32':
         # Windows: Start in new console window
         process = subprocess.Popen(
-            ['python', 'backend/main.py'],
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            ['cmd', '/c', 'start', 'cmd', '/k', 'uvicorn backend.app:app --reload --port 8000'],
+            shell=True
         )
+        # Store a dummy process for tracking
+        processes.append(('Backend', process))
     else:
         # Linux/Mac: Start in background
         process = subprocess.Popen(
-            ['python', 'backend/main.py'],
+            ['uvicorn', 'backend.app:app', '--reload', '--port', '8000'],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
+        processes.append(('Backend', process))
     
-    processes.append(('Backend', process))
-    print(f"   PID: {process.pid}")
+    print(f"   Started")
     print()
     
     # Wait for backend to start
@@ -97,6 +104,7 @@ def start_backend():
         print(f"{Colors.GREEN}✅ Backend is healthy!{Colors.NC}")
     else:
         print(f"{Colors.YELLOW}⚠️  Backend might still be starting...{Colors.NC}")
+        print(f"   Check manually: http://localhost:8000/health")
     print()
     
     return process
@@ -115,8 +123,8 @@ def start_frontend():
     if sys.platform == 'win32':
         # Windows
         process = subprocess.Popen(
-            ['cmd', '/c', 'cd frontend && npm start'],
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            ['cmd', '/c', 'start', 'cmd', '/k', 'cd frontend && npm start'],
+            shell=True
         )
     else:
         # Linux/Mac
@@ -128,7 +136,7 @@ def start_frontend():
         )
     
     processes.append(('Frontend', process))
-    print(f"   PID: {process.pid}")
+    print(f"   Started")
     print()
     
     return process
@@ -139,7 +147,11 @@ def start_streamlit():
     if Path("streamlit_app.py").exists():
         streamlit_file = "streamlit_app.py"
     elif Path("app.py").exists():
-        streamlit_file = "app.py"
+        # Check if it's Streamlit
+        with open("app.py", "r") as f:
+            content = f.read(500)
+            if "streamlit" in content:
+                streamlit_file = "app.py"
     
     if not streamlit_file:
         print(f"{Colors.YELLOW}⚠️  Streamlit app not found - skipping{Colors.NC}")
@@ -153,8 +165,8 @@ def start_streamlit():
     if sys.platform == 'win32':
         # Windows
         process = subprocess.Popen(
-            ['streamlit', 'run', streamlit_file, '--server.port', '8501'],
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            ['cmd', '/c', 'start', 'cmd', '/k', f'streamlit run {streamlit_file} --server.port 8501'],
+            shell=True
         )
     else:
         # Linux/Mac
@@ -165,7 +177,7 @@ def start_streamlit():
         )
     
     processes.append(('Streamlit', process))
-    print(f"   PID: {process.pid}")
+    print(f"   Started")
     print()
     
     return process
@@ -183,16 +195,18 @@ def print_summary():
     if Path("frontend/package.json").exists():
         print("   🔹 Frontend (React):     http://localhost:3000")
     
-    if Path("streamlit_app.py").exists() or Path("app.py").exists():
+    if Path("streamlit_app.py").exists() or (Path("app.py").exists() and "streamlit" in Path("app.py").read_text()):
         print("   🔹 Streamlit (Legacy):   http://localhost:8501")
     
     print()
     print(f"{Colors.YELLOW}💡 TIPS:{Colors.NC}")
-    print("   • Press Ctrl+C to stop all services")
-    print("   • View logs in terminal/console windows")
-    print("   • Running processes:")
-    for name, process in processes:
-        print(f"     - {name}: PID {process.pid}")
+    if sys.platform == 'win32':
+        print("   • Each service runs in its own CMD window")
+        print("   • Close CMD windows to stop services")
+        print("   • Or use Task Manager to kill processes")
+    else:
+        print("   • Press Ctrl+C to stop all services")
+        print("   • View logs in the terminal")
     print()
     print(f"{Colors.GREEN}🚀 Ready to build amazing ML applications!{Colors.NC}")
     print("=" * 80)
@@ -206,7 +220,7 @@ def cleanup(signum=None, frame=None):
     for name, process in processes:
         try:
             process.terminate()
-            print(f"   ✅ Stopped {name} (PID {process.pid})")
+            print(f"   ✅ Stopped {name}")
         except:
             pass
     
@@ -223,8 +237,9 @@ def main():
     parser.add_argument('--open-browser', action='store_true', help='Open browser automatically')
     args = parser.parse_args()
     
-    # Setup signal handler for Ctrl+C
-    signal.signal(signal.SIGINT, cleanup)
+    # Setup signal handler for Ctrl+C (not on Windows)
+    if sys.platform != 'win32':
+        signal.signal(signal.SIGINT, cleanup)
     
     # Print banner
     print_banner()
@@ -248,23 +263,27 @@ def main():
     # Open browser
     if args.open_browser:
         print("🌐 Opening browser...")
+        time.sleep(3)  # Wait a bit
         webbrowser.open('http://localhost:8000/docs')
         print()
     
     # Keep running
-    print(f"{Colors.BLUE}📝 Services running... (Press Ctrl+C to stop all){Colors.NC}")
-    print()
-    
-    try:
-        # Wait forever
-        while True:
-            time.sleep(1)
-            # Check if any process died
-            for name, process in processes:
-                if process.poll() is not None:
-                    print(f"{Colors.RED}⚠️  {name} stopped unexpectedly!{Colors.NC}")
-    except KeyboardInterrupt:
-        cleanup()
+    if sys.platform == 'win32':
+        print(f"{Colors.BLUE}📝 Services are running in separate windows{Colors.NC}")
+        print(f"{Colors.YELLOW}   Close this window or press Ctrl+C to exit{Colors.NC}")
+        print(f"{Colors.YELLOW}   (Services will continue running in their windows){Colors.NC}")
+        print()
+        input("Press Enter to exit this script (services will keep running)...")
+    else:
+        print(f"{Colors.BLUE}📝 Services running... (Press Ctrl+C to stop all){Colors.NC}")
+        print()
+        
+        try:
+            # Wait forever
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            cleanup()
 
 if __name__ == "__main__":
     main()

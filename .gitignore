@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+.env.*
+# Jupyter
+.ipynb_checkpoints/
+# Streamlit
+.streamlit/secrets.toml
+# Artifacts
+artifacts/
+registry/
+# OS
+.DS_Store
+Thumbs.db
+# Build
+dist/
+build/

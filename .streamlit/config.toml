@@ -1,0 +1,13 @@
+[theme]
+base="dark"
+primaryColor="#8A2BE2"
+backgroundColor="#0e1117"
+secondaryBackgroundColor="#151a24"
+textColor="#e5e7eb"
+
+[server]
+runOnSave = true
+headless = true
+
+[client]
+toolbarMode = "minimal"

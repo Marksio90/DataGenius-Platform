@@ -1,0 +1,7 @@
+
+type,year,price,region
+conventional,2017,1.32,West
+conventional,2017,1.01,East
+organic,2017,1.82,West
+conventional,2018,1.12,East
+organic,2018,1.95,West

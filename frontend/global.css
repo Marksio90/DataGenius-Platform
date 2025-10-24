@@ -1,0 +1,26 @@
+
+/* ============================== TMIV – Streamlit stylesheet ============================== */
+:root{
+  --tmiv-accent: #8A2BE2;
+  --tmiv-accent-2: #22d3ee;
+  --tmiv-bg: #0e1117;
+  --tmiv-surface: #141823;
+  --tmiv-text: #e5e7eb;
+  --tmiv-muted: #9aa0a6;
+  --tmiv-border: #2b3240;
+  --tmiv-ok: #10b981;
+  --tmiv-warn: #f59e0b;
+  --tmiv-err: #ef4444;
+  --tmiv-radius: 16px;
+  --tmiv-radius-sm: 10px;
+  --tmiv-shadow: 0 12px 36px rgba(0,0,0,.28);
+}
+html, body, [data-testid="stAppViewContainer"]{ background: var(--tmiv-bg); }
+.block-container{ padding-top: 1rem; }
+.tmiv-card{ background: var(--tmiv-surface); border:1px solid var(--tmiv-border);
+  border-radius: var(--tmiv-radius); padding: 1rem; box-shadow: var(--tmiv-shadow); }
+.tmiv-pill{ border-radius: 999px; padding:.25rem .6rem; border:1px solid var(--tmiv-border); display:inline-block; }
+.tmiv-ok{ color: var(--tmiv-ok); } .tmiv-warn{ color: var(--tmiv-warn);} .tmiv-err{ color: var(--tmiv-err);}
+.tmiv-sticky-cta{ position: sticky; top: .5rem; z-index: 9; }
+hr{ border-color: var(--tmiv-border); }
+kbd{ background:#111827; border:1px solid #374151; border-bottom-width:2px; padding:.08rem .35rem; border-radius:6px; }

@@ -1,0 +1,20 @@
+# TMIV constraints — PyCaret 3.3.2 + sktime 0.26 + alibi-detect (harmonized)
+# wspólne okno: sklearn >1.4.0 (PyCaret) i <1.5.0 (sktime)
+scikit-learn==1.4.2
+scipy==1.11.4
+
+# Image deps for alibi-detect 0.12.x
+scikit-image==0.22.0
+opencv-python==4.8.1.78
+
+# Encoders compatible with sklearn 1.4.x
+category-encoders==2.7.0
+
+# Time-series package bound to sklearn <1.5
+sktime==0.26.0
+
+# Stable LLM/network stack
+openai==1.12.0
+httpx==0.27.0
+httpcore==1.0.1
+anyio==4.0.0
